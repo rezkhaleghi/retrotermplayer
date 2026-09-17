@@ -23,8 +23,8 @@ impl DecoderProfile {
     };
 
     pub const VHS: Self = Self {
-        width: 110,
-        height: 66,
+        width: 90,
+        height: 54,
         fps: 15,
     };
 

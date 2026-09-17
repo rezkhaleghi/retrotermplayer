@@ -4,12 +4,17 @@ use crate::decoder::VideoFrame;
 
 use super::Renderer;
 
-/// CRT television renderer.
+/// Normal-quality terminal video renderer.
 ///
-/// The video is rendered inside a deliberately simple old-school television
-/// chassis. The right side uses a wooden cabinet texture instead of modern
-/// controls, keeping the design nostalgic while remaining very cheap to
-/// render.
+/// Each terminal cell represents two vertical pixels:
+///
+/// ```text
+/// top pixel    -> foreground color
+/// bottom pixel -> background color
+/// ```
+///
+/// ANSI 256-color output is used instead of truecolor because terminal
+/// bandwidth is an important part of the playback cost.
 pub struct VideoRenderer;
 
 impl VideoRenderer {
@@ -23,167 +28,66 @@ impl Renderer for VideoRenderer {
         output.clear();
         output.push_str("\x1b[H");
 
-        render_top(output, frame.width);
-
         for y in (0..frame.height).step_by(2) {
-            render_video_row(frame, y, output);
-        }
+            let top_row_start = y * frame.width * 3;
 
-        render_bottom(output, frame.width);
-    }
-}
+            let bottom_row_start = if y + 1 < frame.height {
+                (y + 1) * frame.width * 3
+            } else {
+                0
+            };
 
-/// Draws the top of the television chassis.
-fn render_top(output: &mut String, width: usize) {
-    let tv_width = width + 13;
+            let mut current_foreground: Option<u8> = None;
+            let mut current_background: Option<u8> = None;
 
-    output.push(' ');
-    output.push_str(&"═".repeat(tv_width));
-    output.push('\n');
+            for x in 0..frame.width {
+                let top_index = top_row_start + x * 3;
 
-    output.push(' ');
-    output.push('╔');
-    output.push_str(&"═".repeat(width + 2));
-    output.push_str("╦══════════╗\n");
+                let top = (
+                    frame.pixels[top_index],
+                    frame.pixels[top_index + 1],
+                    frame.pixels[top_index + 2],
+                );
 
-    output.push(' ');
-    output.push('║');
-    output.push_str(&format!(" {:width$}", "", width = width + 1));
-    output.push_str("║ ─────────║\n");
+                let bottom = if y + 1 < frame.height {
+                    let bottom_index = bottom_row_start + x * 3;
 
-    output.push(' ');
-    output.push('║');
-    output.push_str(&format!(" {:width$}", "", width = width + 1));
-    output.push_str("║ ~~~~~~~~ ║\n");
+                    (
+                        frame.pixels[bottom_index],
+                        frame.pixels[bottom_index + 1],
+                        frame.pixels[bottom_index + 2],
+                    )
+                } else {
+                    (0, 0, 0)
+                };
 
-    output.push(' ');
-    output.push('║');
-    output.push_str(&format!(" {:width$}", "", width = width + 1));
-    output.push_str("║ ──────── ║\n");
-}
+                let top_dither = bayer_dither(x, y);
+                let bottom_dither = bayer_dither(x, y + 1);
 
-/// Draws one half-block video row inside the CRT.
-fn render_video_row(frame: &VideoFrame, y: usize, output: &mut String) {
-    let top_row_start = y * frame.width * 3;
+                let top = process_pixel(top, top_dither);
+                let bottom = process_pixel(bottom, bottom_dither);
 
-    let bottom_row_start = if y + 1 < frame.height {
-        (y + 1) * frame.width * 3
-    } else {
-        0
-    };
+                let foreground = rgb_to_ansi256(top.0, top.1, top.2);
+                let background = rgb_to_ansi256(bottom.0, bottom.1, bottom.2);
 
-    let mut current_foreground: Option<u8> = None;
-    let mut current_background: Option<u8> = None;
+                if current_foreground != Some(foreground) {
+                    let _ = write!(output, "\x1b[38;5;{}m", foreground);
 
-    output.push(' ');
-    output.push('║');
-    output.push(' ');
+                    current_foreground = Some(foreground);
+                }
 
-    for x in 0..frame.width {
-        let top_index = top_row_start + x * 3;
+                if current_background != Some(background) {
+                    let _ = write!(output, "\x1b[48;5;{}m", background);
 
-        let top = (
-            frame.pixels[top_index],
-            frame.pixels[top_index + 1],
-            frame.pixels[top_index + 2],
-        );
+                    current_background = Some(background);
+                }
 
-        let bottom = if y + 1 < frame.height {
-            let bottom_index = bottom_row_start + x * 3;
+                output.push('▀');
+            }
 
-            (
-                frame.pixels[bottom_index],
-                frame.pixels[bottom_index + 1],
-                frame.pixels[bottom_index + 2],
-            )
-        } else {
-            (0, 0, 0)
-        };
-
-        let top_dither = bayer_dither(x, y);
-        let bottom_dither = bayer_dither(x, y + 1);
-
-        let top = process_pixel(top, top_dither);
-        let bottom = process_pixel(bottom, bottom_dither);
-
-        let foreground = rgb_to_ansi256(top.0, top.1, top.2);
-        let background = rgb_to_ansi256(bottom.0, bottom.1, bottom.2);
-
-        if current_foreground != Some(foreground) {
-            let _ = write!(output, "\x1b[38;5;{}m", foreground);
-            current_foreground = Some(foreground);
-        }
-
-        if current_background != Some(background) {
-            let _ = write!(output, "\x1b[48;5;{}m", background);
-            current_background = Some(background);
-        }
-
-        output.push('▀');
-    }
-
-    output.push_str("\x1b[0m");
-    output.push_str(" ║");
-
-    render_wood_panel(output, y / 2);
-
-    output.push('\n');
-}
-
-/// Creates a cheap wood-grain texture for the empty cabinet area.
-fn render_wood_panel(output: &mut String, row: usize) {
-    let pattern = match row % 8 {
-        0 => "──────────",
-        1 => "── ~~~~~ ─",
-        2 => "──────────",
-        3 => "─ ~────~ ─",
-        4 => "──────────",
-        5 => "~~~ ──────",
-        6 => "──────────",
-        _ => "─ ─── ~~~~",
-    };
-
-    let mut chars = pattern.chars();
-
-    for index in 0..10 {
-        if row % 11 == 0 && index == 8 {
-            output.push('●');
-        } else if let Some(character) = chars.next() {
-            output.push(character);
+            output.push_str("\x1b[0m\n");
         }
     }
-
-    output.push('║');
-}
-
-/// Draws the bottom section of the television.
-fn render_bottom(output: &mut String, width: usize) {
-    output.push(' ');
-    output.push('║');
-    output.push_str(&format!(" {:width$}", "", width = width + 1));
-    output.push_str("║ ─────────║\n");
-
-    output.push(' ');
-    output.push('║');
-    output.push_str(&format!(" {:width$}", "", width = width + 1));
-    output.push_str("║ ~~~~~~~~ ║\n");
-
-    // Speaker / wooden cabinet texture.
-    output.push(' ');
-    output.push('║');
-    output.push_str(" ");
-    output.push_str(&"░▒▓".repeat(width / 3));
-    output.push_str(" ");
-    output.push_str("║ ─────────║\n");
-
-    output.push(' ');
-    output.push('╚');
-    output.push_str(&"═".repeat(width + 2));
-    output.push_str("╩══════════╝\n");
-
-    output.push(' ');
-    output.push_str(&"═".repeat(width + 13));
-    output.push('\n');
 }
 
 fn process_pixel(pixel: (u8, u8, u8), dither: i16) -> (u8, u8, u8) {
