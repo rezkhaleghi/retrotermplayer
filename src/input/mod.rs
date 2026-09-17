@@ -12,7 +12,7 @@ pub struct Input {
 ///
 /// Keeping all input in argv means the player never needs to read from
 /// stdin during startup. This also leaves stdin available for future
-/// playback controls.
+/// playback controls when RetroTermPlayer is integrated into PJ-PLAYER.
 pub fn read_input() -> io::Result<Input> {
     let mut args = env::args().skip(1);
 
@@ -25,9 +25,8 @@ pub fn read_input() -> io::Result<Input> {
              Renderer:\n\
              1 = Retro ASCII\n\
              2 = Retro Color\n\
-             3 = Spectrum\n\
-             4 = VHS\n\
-             5 = Video",
+             3 = VHS\n\
+             4 = Video",
         )
     })?;
 
@@ -42,23 +41,22 @@ pub fn read_input() -> io::Result<Input> {
                  Renderer:\n\
                  1 = Retro ASCII\n\
                  2 = Retro Color\n\
-                 3 = Spectrum\n\
-                 4 = VHS\n\
-                 5 = Video",
+                 3 = VHS\n\
+                 4 = Video",
             )
         })?
         .parse::<usize>()
         .map_err(|_| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "Renderer must be a number from 1 to 5.",
+                "Renderer must be a number from 1 to 4.",
             )
         })?;
 
-    if !(1..=5).contains(&renderer) {
+    if !(1..=4).contains(&renderer) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "Renderer must be a number from 1 to 5.",
+            "Renderer must be a number from 1 to 4.",
         ));
     }
 

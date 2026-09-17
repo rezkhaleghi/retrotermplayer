@@ -1,13 +1,13 @@
 use std::io::Read;
 use std::process::{Child, ChildStdout, Command, Stdio};
 
-use crate::source::VideoSource;
+use crate::source::{VideoQuality, VideoSource};
 
 /// Controls how FFmpeg prepares video for a renderer.
 ///
 /// Retro modes intentionally use a small frame size. Normal Video mode
-/// uses a larger frame, but remains within a resolution that terminals can
-/// realistically redraw in real time.
+/// uses a larger frame, but remains within a resolution that terminals
+/// can realistically redraw in real time.
 #[derive(Debug, Clone, Copy)]
 pub struct DecoderProfile {
     pub width: usize,
@@ -56,6 +56,12 @@ impl VideoFrame {
 }
 
 /// FFmpeg-backed RGB video decoder.
+///
+/// FFmpeg performs the expensive media work:
+/// source -> decode -> scale -> FPS conversion -> RGB24.
+///
+/// The Rust side only receives the small raw RGB frames required by the
+/// terminal renderer.
 pub struct FfmpegDecoder {
     process: Child,
     stdout: ChildStdout,
@@ -65,8 +71,12 @@ pub struct FfmpegDecoder {
 }
 
 impl FfmpegDecoder {
-    pub fn new(source: VideoSource, profile: DecoderProfile) -> Result<Self, String> {
-        let input = source.resolve_for_ffmpeg()?;
+    pub fn new(
+        source: VideoSource,
+        profile: DecoderProfile,
+        quality: VideoQuality,
+    ) -> Result<Self, String> {
+        let input = source.resolve_for_ffmpeg(quality)?;
 
         let filter = format!(
             "scale={}:{}:force_original_aspect_ratio=decrease,\
@@ -77,12 +87,22 @@ impl FfmpegDecoder {
 
         let mut process = Command::new("ffmpeg")
             .args([
+                // Keep FFmpeg quiet during normal playback.
                 "-loglevel",
                 "quiet",
+                // Input video source.
                 "-i",
                 &input,
+                // The terminal player only consumes video frames.
+                // Avoid decoding and processing the audio stream.
+                "-an",
+                // The terminal renderer does not process subtitles.
+                "-sn",
+                // Resize and convert the source to the small frame size
+                // required by the selected renderer.
                 "-vf",
                 &filter,
+                // Output raw RGB frames through stdout.
                 "-f",
                 "rawvideo",
                 "-pix_fmt",
@@ -118,6 +138,11 @@ impl FfmpegDecoder {
         self.fps
     }
 
+    /// Reads exactly one RGB frame from FFmpeg.
+    ///
+    /// FFmpeg writes raw video as a continuous byte stream, so a single
+    /// read() is not guaranteed to return a complete frame. We therefore
+    /// keep reading until the frame buffer is full.
     pub fn next_frame(&mut self) -> Result<Option<VideoFrame>, String> {
         let frame_size = self.width * self.height * 3;
 
@@ -130,6 +155,7 @@ impl FfmpegDecoder {
                 .read(&mut pixels[offset..])
                 .map_err(|error| format!("Failed to read FFmpeg frame: {error}"))?;
 
+            // FFmpeg closed stdout before a complete frame was available.
             if bytes_read == 0 {
                 let _ = self.process.wait();
                 return Ok(None);

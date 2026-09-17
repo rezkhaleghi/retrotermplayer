@@ -6,7 +6,7 @@ mod youtube;
 
 pub use direct::DirectSource;
 pub use local::LocalSource;
-pub use youtube::YouTubeSource;
+pub use youtube::{VideoQuality, YouTubeSource};
 
 /// A resolved video source.
 ///
@@ -38,13 +38,13 @@ impl VideoSource {
     ///
     /// Local files and direct URLs can be passed directly to FFmpeg.
     /// YouTube requires yt-dlp to first resolve the actual media stream.
-    pub fn resolve_for_ffmpeg(&self) -> Result<String, String> {
+    pub fn resolve_for_ffmpeg(&self, quality: VideoQuality) -> Result<String, String> {
         match self {
             Self::Local(source) => Ok(source.path.to_string_lossy().to_string()),
 
             Self::Direct(source) => Ok(source.url.clone()),
 
-            Self::YouTube(source) => source.resolve_stream(),
+            Self::YouTube(source) => source.resolve_stream(quality),
         }
     }
 }
