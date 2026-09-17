@@ -3,11 +3,39 @@ use std::process::{Child, ChildStdout, Command, Stdio};
 
 use crate::source::VideoSource;
 
-/// A decoded RGB video frame.
+/// Controls how FFmpeg prepares video for a renderer.
 ///
-/// Renderers operate on this structure rather than dealing directly with
-/// FFmpeg or raw process output. This is the main boundary between media
-/// decoding and visual rendering.
+/// Retro modes intentionally use a small frame size. Normal Video mode
+/// uses a larger frame, but remains within a resolution that terminals can
+/// realistically redraw in real time.
+#[derive(Debug, Clone, Copy)]
+pub struct DecoderProfile {
+    pub width: usize,
+    pub height: usize,
+    pub fps: u32,
+}
+
+impl DecoderProfile {
+    pub const RETRO: Self = Self {
+        width: 100,
+        height: 60,
+        fps: 15,
+    };
+
+    pub const VHS: Self = Self {
+        width: 110,
+        height: 66,
+        fps: 15,
+    };
+
+    pub const VIDEO: Self = Self {
+        width: 120,
+        height: 68,
+        fps: 20,
+    };
+}
+
+/// A decoded RGB video frame.
 #[derive(Debug, Clone)]
 pub struct VideoFrame {
     pub width: usize,
@@ -16,7 +44,6 @@ pub struct VideoFrame {
 }
 
 impl VideoFrame {
-    /// Returns the RGB value of a pixel.
     pub fn pixel(&self, x: usize, y: usize) -> (u8, u8, u8) {
         let index = (y * self.width + x) * 3;
 
@@ -28,26 +55,29 @@ impl VideoFrame {
     }
 }
 
-/// FFmpeg-backed video decoder.
-///
-/// FFmpeg handles the complicated part of media playback:
-/// codecs, containers, HTTP streams, local files, HLS, etc.
-///
-/// The decoder converts everything into a simple RGB frame stream that
-/// the Rust rendering system can understand.
+/// FFmpeg-backed RGB video decoder.
 pub struct FfmpegDecoder {
     process: Child,
     stdout: ChildStdout,
     width: usize,
     height: usize,
+    fps: u32,
 }
 
 impl FfmpegDecoder {
-    pub fn new(source: VideoSource) -> Result<Self, String> {
+    pub fn new(source: VideoSource, profile: DecoderProfile) -> Result<Self, String> {
         let input = source.resolve_for_ffmpeg()?;
 
-        let width = 100;
-        let height = 60;
+        let filter = format!(
+            "scale={}:{}:force_original_aspect_ratio=decrease,\
+             pad={}:{}:(ow-iw)/2:(oh-ih)/2,\
+             fps={}",
+            profile.width,
+            profile.height,
+            profile.width,
+            profile.height,
+            profile.fps
+        );
 
         let mut process = Command::new("ffmpeg")
             .args([
@@ -56,12 +86,7 @@ impl FfmpegDecoder {
                 "-i",
                 &input,
                 "-vf",
-                &format!(
-                    "scale={}:{}:force_original_aspect_ratio=decrease,\
-                     pad={}:{}:(ow-iw)/2:(oh-ih)/2,\
-                     fps=15",
-                    width, height, width, height
-                ),
+                &filter,
                 "-f",
                 "rawvideo",
                 "-pix_fmt",
@@ -87,14 +112,16 @@ impl FfmpegDecoder {
         Ok(Self {
             process,
             stdout,
-            width,
-            height,
+            width: profile.width,
+            height: profile.height,
+            fps: profile.fps,
         })
     }
 
-    /// Reads the next complete video frame.
-    ///
-    /// Returns None when FFmpeg reaches the end of the stream.
+    pub fn fps(&self) -> u32 {
+        self.fps
+    }
+
     pub fn next_frame(&mut self) -> Result<Option<VideoFrame>, String> {
         let frame_size = self.width * self.height * 3;
 

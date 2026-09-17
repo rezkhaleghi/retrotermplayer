@@ -1,3 +1,3 @@
 mod ffmpeg;
 
-pub use ffmpeg::{FfmpegDecoder, VideoFrame};
+pub use ffmpeg::{DecoderProfile, FfmpegDecoder, VideoFrame};

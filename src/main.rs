@@ -1,6 +1,7 @@
 use retrotermplayer::{
-    decoder::FfmpegDecoder,
+    decoder::{DecoderProfile, FfmpegDecoder},
     input::read_input,
+    player::Player,
     renderer::{create_renderer, RendererKind},
     source::resolve_source,
     terminal::Terminal,
@@ -25,17 +26,17 @@ fn main() {
 
     println!("Source: {}", source.description());
 
-let renderer_kind = match input.renderer {
-    1 => RendererKind::Ascii,
-    2 => RendererKind::Color,
-    3 => RendererKind::Vhs,
-    4 => RendererKind::Video,
-    _ => unreachable!(),
-};
+    let (renderer_kind, decoder_profile) = match input.renderer {
+        1 => (RendererKind::Ascii, DecoderProfile::RETRO),
+        2 => (RendererKind::Color, DecoderProfile::RETRO),
+        3 => (RendererKind::Vhs, DecoderProfile::VHS),
+        4 => (RendererKind::Video, DecoderProfile::VIDEO),
+        _ => unreachable!(),
+    };
 
     let renderer = create_renderer(renderer_kind);
 
-    let decoder = match FfmpegDecoder::new(source) {
+    let decoder = match FfmpegDecoder::new(source, decoder_profile) {
         Ok(decoder) => decoder,
         Err(error) => {
             eprintln!("Failed to start FFmpeg:\n{error}");
@@ -45,7 +46,7 @@ let renderer_kind = match input.renderer {
 
     let terminal = Terminal::new();
 
-    let mut player = retrotermplayer::player::Player::new(
+    let mut player = Player::new(
         decoder,
         renderer,
         terminal,

@@ -7,16 +7,11 @@ use crate::{
     terminal::Terminal,
 };
 
-/// Coordinates the video decoder, renderer, and terminal.
+/// Coordinates decoding, rendering, and terminal output.
 ///
-/// The Player is intentionally unaware of where the video comes from or
-/// how the video is rendered. Its only responsibility is coordinating the
-/// playback loop:
-///
-///     decode frame → render frame → display frame
-///
-/// This separation allows the same Player to work with YouTube, local
-/// files, direct URLs, and any renderer implementing the Renderer trait.
+/// Playback timing is based on the decoder's configured FPS rather than
+/// using an arbitrary sleep. This keeps each visual mode synchronized with
+/// the frame rate produced by FFmpeg.
 pub struct Player {
     decoder: FfmpegDecoder,
     renderer: Box<dyn Renderer>,
@@ -24,13 +19,6 @@ pub struct Player {
 }
 
 impl Player {
-    /// Creates a new video player from a decoder, renderer, and terminal.
-    ///
-    /// Each component has a single responsibility:
-    ///
-    /// - FfmpegDecoder: obtains decoded video frames.
-    /// - Renderer: converts frames into terminal output.
-    /// - Terminal: writes the rendered output and manages terminal state.
     pub fn new(
         decoder: FfmpegDecoder,
         renderer: Box<dyn Renderer>,
@@ -43,15 +31,9 @@ impl Player {
         }
     }
 
-    /// Starts the playback loop.
-    ///
-    /// Frames are decoded one at a time and immediately passed to the
-    /// selected renderer. The player attempts to maintain the configured
-    /// playback frame rate without requiring any external Rust dependency.
     pub fn play(&mut self) -> Result<(), String> {
-        const FPS: u64 = 15;
-
-        let frame_duration = Duration::from_millis(1000 / FPS);
+        let frame_duration =
+            Duration::from_secs_f64(1.0 / self.decoder.fps() as f64);
 
         self.terminal.enter();
 
