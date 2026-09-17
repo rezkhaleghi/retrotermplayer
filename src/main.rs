@@ -3,158 +3,160 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+const WIDTH: usize = 100;
+const HEIGHT: usize = 60;
+const FPS: u64 = 15;
+
 fn main() {
-    let url = std::env::args()
+    let youtube_url = std::env::args()
         .nth(1)
-        .expect("Usage: cargo run -- <youtube-url>");
+        .expect("Usage: retrotermplayer <youtube-url>");
 
     println!("Getting YouTube stream...");
 
-    let output = Command::new("yt-dlp")
-        .args([
-            "-f",
-            "worstvideo",
-            "-g",
-            &url,
-        ])
+    let stream_url = Command::new("yt-dlp")
+        .args(["-f", "worstvideo", "-g", &youtube_url])
         .output()
         .expect("Failed to run yt-dlp");
 
-    if !output.status.success() {
-        eprintln!(
-            "yt-dlp failed:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+    if !stream_url.status.success() {
+        eprintln!("yt-dlp failed");
         return;
     }
 
-    let stream_url = String::from_utf8_lossy(&output.stdout)
+    let stream_url = String::from_utf8_lossy(&stream_url.stdout)
         .trim()
         .to_string();
 
-    println!("Starting terminal video...");
-    thread::sleep(Duration::from_secs(1));
+    if stream_url.is_empty() {
+        eprintln!("Could not get stream URL");
+        return;
+    }
 
-    let width = 80;
-    let height = 30;
-
-    let frame_size = width * height;
-
-    let charset: &[u8] = b"@%#*+=-:. ";
+    println!("Starting retro terminal video...");
 
     let mut ffmpeg = Command::new("ffmpeg")
         .args([
             "-loglevel",
             "quiet",
-
             "-i",
             &stream_url,
-
-            // Resize before sending frames to Rust.
             "-vf",
-            "scale=80:30,fps=10,format=gray",
-
+            &format!(
+                "scale={}:{}:force_original_aspect_ratio=decrease,\
+pad={}:{}:(ow-iw)/2:(oh-ih)/2,\
+fps={},format=gray",
+                WIDTH,
+                HEIGHT,
+                WIDTH,
+                HEIGHT,
+                FPS
+            ),
             "-f",
             "rawvideo",
             "-pix_fmt",
             "gray",
-
             "pipe:1",
         ])
         .stdout(Stdio::piped())
+        .stderr(Stdio::null())
         .spawn()
         .expect("Failed to start ffmpeg");
 
     let mut stdout = ffmpeg
         .stdout
         .take()
-        .expect("Failed to access ffmpeg stdout");
+        .expect("Failed to capture ffmpeg output");
 
-    // Clear screen.
-    print!("\x1b[2J");
+    print!("\x1b[2J\x1b[H\x1b[?25l");
+    io::stdout().flush().unwrap();
 
-    // Hide cursor.
-    print!("\x1b[?25l");
+    let result = render_video(&mut stdout);
 
-    // Make sure cursor comes back even when the program exits.
-    let result = render_video(
-        &mut stdout,
-        width,
-        height,
-        frame_size,
-        charset,
-    );
-
-    // Show cursor.
-    print!("\x1b[?25h");
-
-    // Move cursor below the video.
-    print!("\x1b[{};1H", height + 2);
-
+    print!("\x1b[?25h\x1b[0m\n");
     io::stdout().flush().unwrap();
 
     if let Err(error) = result {
-        eprintln!("Playback error: {error}");
+        eprintln!("Rendering error: {error}");
     }
 
     let _ = ffmpeg.wait();
 }
 
-fn render_video(
-    stdout: &mut impl Read,
-    width: usize,
-    height: usize,
-    frame_size: usize,
-    charset: &[u8],
-) -> io::Result<()> {
+fn render_video<R: Read>(reader: &mut R) -> io::Result<()> {
+    let frame_size = WIDTH * HEIGHT;
     let mut frame = vec![0u8; frame_size];
 
-    let frame_duration = Duration::from_millis(100);
+    let frame_duration = Duration::from_millis(1000 / FPS);
 
     loop {
         let frame_start = Instant::now();
 
-        let mut read = 0;
-
-        while read < frame_size {
-            let n = stdout.read(&mut frame[read..])?;
-
-            if n == 0 {
-                return Ok(());
-            }
-
-            read += n;
+        if !read_exact_frame(reader, &mut frame)? {
+            break;
         }
 
-        // Move cursor to the top-left.
-        print!("\x1b[H");
-
-        let mut output = String::with_capacity(
-            width * height + height,
-        );
-
-        for y in 0..height {
-            for x in 0..width {
-                let pixel = frame[y * width + x];
-
-                let index =
-                    pixel as usize * (charset.len() - 1) / 255;
-
-                output.push(charset[index] as char);
-            }
-
-            output.push('\n');
-        }
-
-        print!("{output}");
+        render_frame(&frame);
 
         io::stdout().flush()?;
 
-        // Don't render faster than 10 FPS.
         let elapsed = frame_start.elapsed();
 
         if elapsed < frame_duration {
             thread::sleep(frame_duration - elapsed);
         }
     }
+
+    Ok(())
+}
+
+fn read_exact_frame<R: Read>(
+    reader: &mut R,
+    buffer: &mut [u8],
+) -> io::Result<bool> {
+    let mut offset = 0;
+
+    while offset < buffer.len() {
+        match reader.read(&mut buffer[offset..])? {
+            0 => {
+                return Ok(false);
+            }
+            bytes_read => {
+                offset += bytes_read;
+            }
+        }
+    }
+
+    Ok(true)
+}
+
+fn render_frame(frame: &[u8]) {
+    let mut output = String::new();
+
+    // Move cursor to top-left without clearing the terminal.
+    output.push_str("\x1b[H");
+
+    // Each terminal character represents TWO vertical pixels.
+    for y in (0..HEIGHT).step_by(2) {
+        for x in 0..WIDTH {
+            let top = frame[y * WIDTH + x];
+
+            let bottom = if y + 1 < HEIGHT {
+                frame[(y + 1) * WIDTH + x]
+            } else {
+                0
+            };
+
+            output.push(match (top > 128, bottom > 128) {
+                (true, true) => '█',
+                (true, false) => '▀',
+                (false, true) => '▄',
+                (false, false) => ' ',
+            });
+        }
+
+        output.push('\n');
+    }
+
+    print!("{output}");
 }
