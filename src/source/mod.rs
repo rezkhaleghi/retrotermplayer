@@ -2,16 +2,16 @@ use std::path::PathBuf;
 
 mod direct;
 mod local;
+mod offline;
 mod youtube;
 
 pub use direct::DirectSource;
 pub use local::LocalSource;
+pub use offline::{
+    is_video_file, load_entries, load_entries_with_cancel, load_video_files, SUPPORTED_EXTENSIONS,
+};
 pub use youtube::{VideoQuality, YouTubeSource};
 
-/// A resolved video source.
-///
-/// The decoder doesn't need to know whether the video came from YouTube,
-/// a local file, or a direct HTTP URL. It only needs a playable input.
 #[derive(Debug, Clone)]
 pub enum VideoSource {
     Local(LocalSource),
@@ -22,37 +22,21 @@ pub enum VideoSource {
 impl VideoSource {
     pub fn description(&self) -> String {
         match self {
-            Self::Local(source) => {
-                format!("Local file: {}", source.path.display())
-            }
-            Self::Direct(source) => {
-                format!("Direct URL: {}", source.url)
-            }
-            Self::YouTube(source) => {
-                format!("YouTube: {}", source.url)
-            }
+            Self::Local(source) => format!("Local file: {}", source.path.display()),
+            Self::Direct(source) => format!("Direct URL: {}", source.url),
+            Self::YouTube(source) => format!("YouTube: {}", source.url),
         }
     }
 
-    /// Returns the actual input that FFmpeg should consume.
-    ///
-    /// Local files and direct URLs can be passed directly to FFmpeg.
-    /// YouTube requires yt-dlp to first resolve the actual media stream.
     pub fn resolve_for_ffmpeg(&self, quality: VideoQuality) -> Result<String, String> {
         match self {
             Self::Local(source) => Ok(source.path.to_string_lossy().to_string()),
-
             Self::Direct(source) => Ok(source.url.clone()),
-
             Self::YouTube(source) => source.resolve_stream(quality),
         }
     }
 }
 
-/// Detects the type of user input.
-///
-/// Detection intentionally happens before decoding. This keeps the
-/// source system independent from the renderer and decoder.
 pub fn resolve_source(input: &str) -> Result<VideoSource, String> {
     let expanded = expand_home_directory(input);
 

@@ -83,7 +83,7 @@ impl Renderer for TvRenderer {
         render_blank_row(output, screen_row_width);
         output.push('\n');
 
-        // Bottom textured section.
+        // Bottom textured cabinet.
         output.push('║');
 
         let total_width = screen_row_width + PANEL_WIDTH + 1;
@@ -104,7 +104,9 @@ impl Renderer for TvRenderer {
 ///
 /// This intentionally uses exactly the same width as the screen area:
 ///
-///     ║  <screen>  ║
+/// ```text
+/// ║  <screen>  ║
+/// ```
 ///
 /// but replaces the screen with spaces.
 fn render_blank_row(output: &mut String, screen_row_width: usize) {
