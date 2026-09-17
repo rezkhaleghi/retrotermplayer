@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "youtube-terminal-video"
+name = "retrotermplayer"
 version = "0.1.0"
