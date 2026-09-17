@@ -72,11 +72,7 @@ impl FfmpegDecoder {
             "scale={}:{}:force_original_aspect_ratio=decrease,\
              pad={}:{}:(ow-iw)/2:(oh-ih)/2,\
              fps={}",
-            profile.width,
-            profile.height,
-            profile.width,
-            profile.height,
-            profile.fps
+            profile.width, profile.height, profile.width, profile.height, profile.fps
         );
 
         let mut process = Command::new("ffmpeg")
@@ -132,9 +128,7 @@ impl FfmpegDecoder {
             let bytes_read = self
                 .stdout
                 .read(&mut pixels[offset..])
-                .map_err(|error| {
-                    format!("Failed to read FFmpeg frame: {error}")
-                })?;
+                .map_err(|error| format!("Failed to read FFmpeg frame: {error}"))?;
 
             if bytes_read == 0 {
                 let _ = self.process.wait();

@@ -24,13 +24,14 @@ pub enum RendererKind {
 
 /// Converts decoded video frames into terminal output.
 ///
-/// Renderers know nothing about where the video came from. They receive
-/// the same VideoFrame regardless of whether the source is YouTube,
-/// a local file, or a direct media URL.
+/// The renderer writes into a caller-owned String instead of returning a
+/// newly allocated String for every frame. The player reuses that buffer
+/// throughout playback, which significantly reduces allocation churn.
 pub trait Renderer {
-    fn render(&mut self, frame: &VideoFrame) -> String;
+    fn render(&mut self, frame: &VideoFrame, output: &mut String);
 }
 
+/// Creates the renderer associated with the selected visual mode.
 pub fn create_renderer(kind: RendererKind) -> Box<dyn Renderer> {
     match kind {
         RendererKind::Ascii => Box::new(AsciiRenderer::new()),

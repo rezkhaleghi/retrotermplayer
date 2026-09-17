@@ -46,11 +46,7 @@ fn main() {
 
     let terminal = Terminal::new();
 
-    let mut player = Player::new(
-        decoder,
-        renderer,
-        terminal,
-    );
+    let mut player = Player::new(decoder, renderer, terminal);
 
     if let Err(error) = player.play() {
         eprintln!("\nPlayback error: {error}");

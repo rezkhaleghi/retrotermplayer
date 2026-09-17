@@ -78,10 +78,7 @@ pub fn resolve_source(input: &str) -> Result<VideoSource, String> {
         }));
     }
 
-    Err(
-        "Input is neither an existing local file nor a recognized URL."
-            .to_string(),
-    )
+    Err("Input is neither an existing local file nor a recognized URL.".to_string())
 }
 
 fn is_youtube_url(input: &str) -> bool {
@@ -96,7 +93,7 @@ fn is_url(input: &str) -> bool {
         || input.starts_with("rtmp://")
         || input.starts_with("rtsp://")
 }
- 
+
 fn expand_home_directory(input: &str) -> String {
     if input == "~" {
         if let Ok(home) = std::env::var("HOME") {

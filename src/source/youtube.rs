@@ -16,12 +16,7 @@ impl YouTubeSource {
     /// doesn't need to know anything about YouTube extraction.
     pub fn resolve_stream(&self) -> Result<String, String> {
         let output = Command::new("yt-dlp")
-            .args([
-                "-f",
-                "worstvideo",
-                "-g",
-                &self.url,
-            ])
+            .args(["-f", "worstvideo", "-g", &self.url])
             .output()
             .map_err(|error| {
                 format!(
@@ -40,9 +35,7 @@ impl YouTubeSource {
             ));
         }
 
-        let stream = String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .to_string();
+        let stream = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
         if stream.is_empty() {
             return Err("yt-dlp returned an empty stream URL.".to_string());
