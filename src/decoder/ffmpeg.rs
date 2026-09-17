@@ -5,9 +5,9 @@ use crate::source::{VideoQuality, VideoSource};
 
 /// Controls how FFmpeg prepares video for a renderer.
 ///
-/// Retro modes intentionally use a small frame size. Normal Video mode
-/// uses a larger frame, but remains within a resolution that terminals
-/// can realistically redraw in real time.
+/// Terminal rendering is much more expensive than normal video output.
+/// These profiles intentionally keep the decoded frame small enough for
+/// a terminal to redraw in real time.
 #[derive(Debug, Clone, Copy)]
 pub struct DecoderProfile {
     pub width: usize,
@@ -28,10 +28,15 @@ impl DecoderProfile {
         fps: 15,
     };
 
+    /// Normal terminal video mode.
+    ///
+    /// This is intentionally smaller than the retro profiles in terms of
+    /// frame rate because the color renderer has significantly more terminal
+    /// output to produce than the monochrome renderer.
     pub const VIDEO: Self = Self {
-        width: 120,
-        height: 68,
-        fps: 20,
+        width: 80,
+        height: 45,
+        fps: 15,
     };
 }
 
@@ -58,7 +63,8 @@ impl VideoFrame {
 /// FFmpeg-backed RGB video decoder.
 ///
 /// FFmpeg performs the expensive media work:
-/// source -> decode -> scale -> FPS conversion -> RGB24.
+///
+/// source -> decode -> scale -> FPS conversion -> RGB24
 ///
 /// The Rust side only receives the small raw RGB frames required by the
 /// terminal renderer.
@@ -94,11 +100,11 @@ impl FfmpegDecoder {
                 "-i",
                 &input,
                 // The terminal player only consumes video frames.
-                // Avoid decoding and processing the audio stream.
+                // Do not decode or process the audio stream.
                 "-an",
                 // The terminal renderer does not process subtitles.
                 "-sn",
-                // Resize and convert the source to the small frame size
+                // Resize the source and convert it to the frame rate
                 // required by the selected renderer.
                 "-vf",
                 &filter,
