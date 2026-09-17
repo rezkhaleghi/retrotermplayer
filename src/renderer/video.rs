@@ -4,22 +4,12 @@ use crate::decoder::VideoFrame;
 
 use super::Renderer;
 
-/// Normal-quality terminal video renderer.
+/// CRT television renderer.
 ///
-/// Terminal output is much more expensive than drawing to a real video
-/// surface. This renderer therefore uses ANSI 256-color instead of truecolor
-/// and represents two vertical pixels with one half-block character.
-///
-/// Each terminal cell represents:
-///
-/// ```text
-/// top pixel    -> foreground color
-/// bottom pixel -> background color
-/// ```
-///
-/// A small ordered dither and subtle contrast adjustment improve gradients
-/// and image definition without introducing expensive image-processing
-/// dependencies.
+/// The video is rendered inside a deliberately simple old-school television
+/// chassis. The right side uses a wooden cabinet texture instead of modern
+/// controls, keeping the design nostalgic while remaining very cheap to
+/// render.
 pub struct VideoRenderer;
 
 impl VideoRenderer {
@@ -30,139 +20,206 @@ impl VideoRenderer {
 
 impl Renderer for VideoRenderer {
     fn render(&mut self, frame: &VideoFrame, output: &mut String) {
-        // Reuse the same output allocation for every frame.
         output.clear();
-
         output.push_str("\x1b[H");
 
+        render_top(output, frame.width);
+
         for y in (0..frame.height).step_by(2) {
-            let top_row_start = y * frame.width * 3;
-
-            let bottom_row_start = if y + 1 < frame.height {
-                (y + 1) * frame.width * 3
-            } else {
-                0
-            };
-
-            // Track the current ANSI colors.
-            //
-            // Adjacent pixels often map to the same ANSI 256-color value,
-            // so there is no reason to emit another escape sequence when
-            // the color has not changed.
-            let mut current_top: Option<u8> = None;
-            let mut current_bottom: Option<u8> = None;
-
-            for x in 0..frame.width {
-                let top_index = top_row_start + x * 3;
-
-                let top = (
-                    frame.pixels[top_index],
-                    frame.pixels[top_index + 1],
-                    frame.pixels[top_index + 2],
-                );
-
-                let bottom = if y + 1 < frame.height {
-                    let bottom_index = bottom_row_start + x * 3;
-
-                    (
-                        frame.pixels[bottom_index],
-                        frame.pixels[bottom_index + 1],
-                        frame.pixels[bottom_index + 2],
-                    )
-                } else {
-                    (0, 0, 0)
-                };
-
-                let dither = bayer_dither(x, y);
-
-                let top = adjust_pixel(top, dither);
-                let bottom = adjust_pixel(bottom, dither);
-
-                let top_color = rgb_to_ansi256(top.0, top.1, top.2);
-                let bottom_color = rgb_to_ansi256(bottom.0, bottom.1, bottom.2);
-
-                // Change the foreground color only when necessary.
-                if current_top != Some(top_color) {
-                    let _ = write!(output, "\x1b[38;5;{}m", top_color);
-                    current_top = Some(top_color);
-                }
-
-                // Change the background color only when necessary.
-                if current_bottom != Some(bottom_color) {
-                    let _ = write!(output, "\x1b[48;5;{}m", bottom_color);
-                    current_bottom = Some(bottom_color);
-                }
-
-                output.push('▀');
-            }
-
-            // Reset ANSI state at the end of each terminal row.
-            output.push_str("\x1b[0m\n");
+            render_video_row(frame, y, output);
         }
+
+        render_bottom(output, frame.width);
     }
 }
 
-/// Applies a small contrast adjustment and ordered dither to an RGB pixel.
-///
-/// The contrast adjustment is intentionally subtle. The goal is to preserve
-/// the source image rather than create a stylized filter.
-fn adjust_pixel(pixel: (u8, u8, u8), dither: i16) -> (u8, u8, u8) {
+/// Draws the top of the television chassis.
+fn render_top(output: &mut String, width: usize) {
+    let tv_width = width + 13;
+
+    output.push(' ');
+    output.push_str(&"═".repeat(tv_width));
+    output.push('\n');
+
+    output.push(' ');
+    output.push('╔');
+    output.push_str(&"═".repeat(width + 2));
+    output.push_str("╦══════════╗\n");
+
+    output.push(' ');
+    output.push('║');
+    output.push_str(&format!(" {:width$}", "", width = width + 1));
+    output.push_str("║ ─────────║\n");
+
+    output.push(' ');
+    output.push('║');
+    output.push_str(&format!(" {:width$}", "", width = width + 1));
+    output.push_str("║ ~~~~~~~~ ║\n");
+
+    output.push(' ');
+    output.push('║');
+    output.push_str(&format!(" {:width$}", "", width = width + 1));
+    output.push_str("║ ──────── ║\n");
+}
+
+/// Draws one half-block video row inside the CRT.
+fn render_video_row(frame: &VideoFrame, y: usize, output: &mut String) {
+    let top_row_start = y * frame.width * 3;
+
+    let bottom_row_start = if y + 1 < frame.height {
+        (y + 1) * frame.width * 3
+    } else {
+        0
+    };
+
+    let mut current_foreground: Option<u8> = None;
+    let mut current_background: Option<u8> = None;
+
+    output.push(' ');
+    output.push('║');
+    output.push(' ');
+
+    for x in 0..frame.width {
+        let top_index = top_row_start + x * 3;
+
+        let top = (
+            frame.pixels[top_index],
+            frame.pixels[top_index + 1],
+            frame.pixels[top_index + 2],
+        );
+
+        let bottom = if y + 1 < frame.height {
+            let bottom_index = bottom_row_start + x * 3;
+
+            (
+                frame.pixels[bottom_index],
+                frame.pixels[bottom_index + 1],
+                frame.pixels[bottom_index + 2],
+            )
+        } else {
+            (0, 0, 0)
+        };
+
+        let top_dither = bayer_dither(x, y);
+        let bottom_dither = bayer_dither(x, y + 1);
+
+        let top = process_pixel(top, top_dither);
+        let bottom = process_pixel(bottom, bottom_dither);
+
+        let foreground = rgb_to_ansi256(top.0, top.1, top.2);
+        let background = rgb_to_ansi256(bottom.0, bottom.1, bottom.2);
+
+        if current_foreground != Some(foreground) {
+            let _ = write!(output, "\x1b[38;5;{}m", foreground);
+            current_foreground = Some(foreground);
+        }
+
+        if current_background != Some(background) {
+            let _ = write!(output, "\x1b[48;5;{}m", background);
+            current_background = Some(background);
+        }
+
+        output.push('▀');
+    }
+
+    output.push_str("\x1b[0m");
+    output.push_str(" ║");
+
+    render_wood_panel(output, y / 2);
+
+    output.push('\n');
+}
+
+/// Creates a cheap wood-grain texture for the empty cabinet area.
+fn render_wood_panel(output: &mut String, row: usize) {
+    let pattern = match row % 8 {
+        0 => "──────────",
+        1 => "── ~~~~~ ─",
+        2 => "──────────",
+        3 => "─ ~────~ ─",
+        4 => "──────────",
+        5 => "~~~ ──────",
+        6 => "──────────",
+        _ => "─ ─── ~~~~",
+    };
+
+    let mut chars = pattern.chars();
+
+    for index in 0..10 {
+        if row % 11 == 0 && index == 8 {
+            output.push('●');
+        } else if let Some(character) = chars.next() {
+            output.push(character);
+        }
+    }
+
+    output.push('║');
+}
+
+/// Draws the bottom section of the television.
+fn render_bottom(output: &mut String, width: usize) {
+    output.push(' ');
+    output.push('║');
+    output.push_str(&format!(" {:width$}", "", width = width + 1));
+    output.push_str("║ ─────────║\n");
+
+    output.push(' ');
+    output.push('║');
+    output.push_str(&format!(" {:width$}", "", width = width + 1));
+    output.push_str("║ ~~~~~~~~ ║\n");
+
+    // Speaker / wooden cabinet texture.
+    output.push(' ');
+    output.push('║');
+    output.push_str(" ");
+    output.push_str(&"░▒▓".repeat(width / 3));
+    output.push_str(" ");
+    output.push_str("║ ─────────║\n");
+
+    output.push(' ');
+    output.push('╚');
+    output.push_str(&"═".repeat(width + 2));
+    output.push_str("╩══════════╝\n");
+
+    output.push(' ');
+    output.push_str(&"═".repeat(width + 13));
+    output.push('\n');
+}
+
+fn process_pixel(pixel: (u8, u8, u8), dither: i16) -> (u8, u8, u8) {
     (
-        adjust_channel(pixel.0, dither),
-        adjust_channel(pixel.1, dither),
-        adjust_channel(pixel.2, dither),
+        process_channel(pixel.0, dither),
+        process_channel(pixel.1, dither),
+        process_channel(pixel.2, dither),
     )
 }
 
-/// Adjusts one color channel.
-///
-/// A contrast factor of approximately 1.08 gives dark areas slightly more
-/// definition while avoiding aggressive clipping of highlights.
-fn adjust_channel(value: u8, dither: i16) -> u8 {
-    let centered = value as i16 - 128;
+fn process_channel(value: u8, dither: i16) -> u8 {
+    let value = value as i16;
 
-    let contrast = centered * 108 / 100 + 128;
-    let adjusted = contrast + dither;
+    let contrasted = ((value - 128) * 106 / 100) + 128;
 
-    adjusted.clamp(0, 255) as u8
+    (contrasted + dither).clamp(0, 255) as u8
 }
 
-/// Returns a small ordered-dither offset.
-///
-/// A 2x2 Bayer matrix is enough to break up large flat color bands while
-/// requiring only a few integer operations per pixel.
-///
-/// The result is intentionally tiny so the dither remains almost invisible.
 fn bayer_dither(x: usize, y: usize) -> i16 {
     const MATRIX: [[i16; 2]; 2] = [[-2, 1], [2, -1]];
 
-    MATRIX[y % 2][x % 2]
+    MATRIX[y & 1][x & 1]
 }
 
-/// Converts RGB into the closest ANSI 256-color palette entry.
-///
-/// ANSI 256 contains a 6x6x6 RGB color cube plus a grayscale ramp. The
-/// grayscale path is important for skin tones, skies, black-and-white
-/// footage, and other areas where the RGB channels are close together.
 fn rgb_to_ansi256(r: u8, g: u8, b: u8) -> u8 {
-    // Nearly equal channels are better represented by the ANSI grayscale
-    // palette instead of the RGB color cube.
-    if r.abs_diff(g) < 8 && g.abs_diff(b) < 8 {
+    if r.abs_diff(g) < 10 && g.abs_diff(b) < 10 {
         return grayscale_to_ansi(r);
     }
 
-    // Map the color into the ANSI 6x6x6 RGB cube.
-    //
-    // Using rounded values instead of simple truncation gives a closer
-    // approximation to the source color.
-    let r_index = ((r as u16 * 5 + 127) / 255) as u8;
-    let g_index = ((g as u16 * 5 + 127) / 255) as u8;
-    let b_index = ((b as u16 * 5 + 127) / 255) as u8;
+    let red = ((r as u16 * 5 + 127) / 255) as u8;
+    let green = ((g as u16 * 5 + 127) / 255) as u8;
+    let blue = ((b as u16 * 5 + 127) / 255) as u8;
 
-    16 + 36 * r_index + 6 * g_index + b_index
+    16 + 36 * red + 6 * green + blue
 }
 
-/// Maps a neutral RGB value to the ANSI grayscale ramp.
 fn grayscale_to_ansi(value: u8) -> u8 {
     if value < 8 {
         return 16;
