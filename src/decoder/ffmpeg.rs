@@ -5,9 +5,9 @@ use crate::source::{VideoQuality, VideoSource};
 
 /// Controls how FFmpeg prepares video for a renderer.
 ///
-/// Terminal rendering is much more expensive than normal video output.
-/// These profiles intentionally keep the decoded frame small enough for
-/// a terminal to redraw in real time.
+/// Terminal rendering is much more expensive than drawing to a real video
+/// surface. These profiles intentionally keep the decoded frame small enough
+/// for a terminal to redraw in real time.
 #[derive(Debug, Clone, Copy)]
 pub struct DecoderProfile {
     pub width: usize,
@@ -30,12 +30,11 @@ impl DecoderProfile {
 
     /// Normal terminal video mode.
     ///
-    /// This is intentionally smaller than the retro profiles in terms of
-    /// frame rate because the color renderer has significantly more terminal
-    /// output to produce than the monochrome renderer.
+    /// 90x50 provides more visual detail than the previous 80x45 profile
+    /// while remaining small enough for responsive terminal rendering.
     pub const VIDEO: Self = Self {
-        width: 80,
-        height: 45,
+        width: 90,
+        height: 50,
         fps: 15,
     };
 }
