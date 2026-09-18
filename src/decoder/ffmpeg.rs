@@ -76,10 +76,28 @@ pub struct FfmpegDecoder {
 }
 
 impl FfmpegDecoder {
+    /// Creates a decoder starting from the beginning of the source.
     pub fn new(
         source: VideoSource,
         profile: DecoderProfile,
         quality: VideoQuality,
+    ) -> Result<Self, String> {
+        Self::new_at_position(source, profile, quality, 0.0)
+    }
+
+    /// Creates a decoder starting at a specific playback position.
+    ///
+    /// The position is expressed in seconds and is intended to align the
+    /// video decoder with the application's shared audio playback timeline.
+    ///
+    /// FFmpeg performs the seek before opening the input so that the decoder
+    /// starts close to the requested position instead of decoding the entire
+    /// source from the beginning.
+    pub fn new_at_position(
+        source: VideoSource,
+        profile: DecoderProfile,
+        quality: VideoQuality,
+        position: f64,
     ) -> Result<Self, String> {
         if profile.width == 0 || profile.height == 0 {
             return Err("Decoder profile dimensions must be greater than zero.".to_string());
@@ -87,6 +105,10 @@ impl FfmpegDecoder {
 
         if profile.fps == 0 {
             return Err("Decoder profile FPS must be greater than zero.".to_string());
+        }
+
+        if !position.is_finite() || position < 0.0 {
+            return Err("Decoder position must be a finite non-negative value.".to_string());
         }
 
         let input = source.resolve_for_ffmpeg(quality)?;
@@ -98,6 +120,8 @@ impl FfmpegDecoder {
             profile.width, profile.height, profile.width, profile.height, profile.fps
         );
 
+        let position = position.to_string();
+
         let mut process = Command::new("ffmpeg")
             .args([
                 // FFmpeg must never read from the application's terminal.
@@ -105,6 +129,9 @@ impl FfmpegDecoder {
                 // Keep FFmpeg quiet during normal playback.
                 "-loglevel",
                 "quiet",
+                // Seek into the input before decoding.
+                "-ss",
+                &position,
                 // Input video source.
                 "-i",
                 &input,
