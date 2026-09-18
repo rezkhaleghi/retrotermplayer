@@ -7,58 +7,39 @@ impl Terminal {
         Self
     }
 
-    pub fn enter(&self) {
-        let stdout = io::stdout();
-        let mut handle = stdout.lock();
+    pub fn enter(&self) -> io::Result<()> {
+        let mut stdout = io::stdout();
 
-        // Enter alternate screen, hide cursor, clear screen and reset
-        // scrolling/wrapping state.
-        let _ = handle.write_all(
-            b"\x1b[?1049h\
-              \x1b[?25l\
-              \x1b[2J\
-              \x1b[H\
-              \x1b[?7l",
-        );
+        write!(stdout, "\x1b[?1049h\x1b[?25l\x1b[?7l\x1b[2J\x1b[H")?;
 
-        let _ = handle.flush();
+        stdout.flush()
     }
 
-    pub fn draw(&self, output: &str) {
-        let stdout = io::stdout();
-        let mut handle = stdout.lock();
+    pub fn draw(&self, output: &str) -> io::Result<()> {
+        let mut stdout = io::stdout();
 
-        // Always:
-        //   1. move to the top-left
-        //   2. clear the previous frame
-        //   3. draw the new frame
-        //
-        // This prevents old/wrapped content from surviving a resize.
-        let _ = handle.write_all(b"\x1b[H\x1b[2J");
-        let _ = handle.write_all(output.as_bytes());
-        let _ = handle.flush();
+        write!(stdout, "\x1b[H\x1b[2J")?;
+        stdout.write_all(output.as_bytes())?;
+        stdout.flush()
     }
 
-    pub fn leave(&self) {
-        let stdout = io::stdout();
-        let mut handle = stdout.lock();
+    pub fn leave(&self) -> io::Result<()> {
+        let mut stdout = io::stdout();
 
-        // Restore normal terminal behaviour.
-        let _ = handle.write_all(
-            b"\x1b[?7h\
-              \x1b[?25h\
-              \x1b[0m\
-              \x1b[2J\
-              \x1b[H\
-              \x1b[?1049l",
-        );
+        write!(stdout, "\x1b[0m\x1b[?7h\x1b[?25h\x1b[2J\x1b[H\x1b[?1049l")?;
 
-        let _ = handle.flush();
+        stdout.flush()
+    }
+}
+
+impl Default for Terminal {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl Drop for Terminal {
     fn drop(&mut self) {
-        self.leave();
+        let _ = self.leave();
     }
 }

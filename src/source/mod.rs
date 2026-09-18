@@ -38,7 +38,8 @@ impl VideoSource {
 }
 
 pub fn resolve_source(input: &str) -> Result<VideoSource, String> {
-    let expanded = expand_home_directory(input);
+    let input = normalize_input(input);
+    let expanded = expand_home_directory(&input);
 
     let path = PathBuf::from(&expanded);
 
@@ -50,16 +51,12 @@ pub fn resolve_source(input: &str) -> Result<VideoSource, String> {
         return Err("The supplied path exists but is not a file.".to_string());
     }
 
-    if is_youtube_url(input) {
-        return Ok(VideoSource::YouTube(YouTubeSource {
-            url: input.to_string(),
-        }));
+    if is_youtube_url(&input) {
+        return Ok(VideoSource::YouTube(YouTubeSource { url: input }));
     }
 
-    if is_url(input) {
-        return Ok(VideoSource::Direct(DirectSource {
-            url: input.to_string(),
-        }));
+    if is_url(&input) {
+        return Ok(VideoSource::Direct(DirectSource { url: input }));
     }
 
     Err("Input is neither an existing local file nor a recognized URL.".to_string())
@@ -78,15 +75,32 @@ fn is_url(input: &str) -> bool {
         || input.starts_with("rtsp://")
 }
 
+fn normalize_input(input: &str) -> String {
+    let input = input.trim();
+
+    input
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .or_else(|| {
+            input
+                .strip_prefix('\'')
+                .and_then(|value| value.strip_suffix('\''))
+        })
+        .unwrap_or(input)
+        .to_string()
+}
+
 fn expand_home_directory(input: &str) -> String {
-    if input == "~" {
-        if let Ok(home) = std::env::var("HOME") {
+    if let Ok(home) = std::env::var("HOME") {
+        if input == "~" || input == "$HOME" {
             return home;
         }
-    }
 
-    if let Some(rest) = input.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
+        if let Some(rest) = input.strip_prefix("~/") {
+            return format!("{home}/{rest}");
+        }
+
+        if let Some(rest) = input.strip_prefix("$HOME/") {
             return format!("{home}/{rest}");
         }
     }

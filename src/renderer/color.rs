@@ -17,6 +17,12 @@ impl ColorRenderer {
     }
 }
 
+impl Default for ColorRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Renderer for ColorRenderer {
     fn render(&mut self, frame: &VideoFrame, output: &mut String) {
         // Reuse the same output allocation for every frame.

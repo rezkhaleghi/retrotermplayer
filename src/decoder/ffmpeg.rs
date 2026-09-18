@@ -92,6 +92,8 @@ impl FfmpegDecoder {
 
         let mut process = Command::new("ffmpeg")
             .args([
+                // FFmpeg must never read from the application's terminal.
+                "-nostdin",
                 // Keep FFmpeg quiet during normal playback.
                 "-loglevel",
                 "quiet",
@@ -99,12 +101,10 @@ impl FfmpegDecoder {
                 "-i",
                 &input,
                 // The terminal player only consumes video frames.
-                // Do not decode or process the audio stream.
                 "-an",
                 // The terminal renderer does not process subtitles.
                 "-sn",
-                // Resize the source and convert it to the frame rate
-                // required by the selected renderer.
+                // Resize and convert to the renderer's target FPS.
                 "-vf",
                 &filter,
                 // Output raw RGB frames through stdout.
@@ -114,6 +114,7 @@ impl FfmpegDecoder {
                 "rgb24",
                 "pipe:1",
             ])
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
@@ -150,7 +151,6 @@ impl FfmpegDecoder {
     /// keep reading until the frame buffer is full.
     pub fn next_frame(&mut self) -> Result<Option<VideoFrame>, String> {
         let frame_size = self.width * self.height * 3;
-
         let mut pixels = vec![0u8; frame_size];
         let mut offset = 0;
 
@@ -160,10 +160,25 @@ impl FfmpegDecoder {
                 .read(&mut pixels[offset..])
                 .map_err(|error| format!("Failed to read FFmpeg frame: {error}"))?;
 
-            // FFmpeg closed stdout before a complete frame was available.
             if bytes_read == 0 {
-                let _ = self.process.wait();
-                return Ok(None);
+                let status = self
+                    .process
+                    .wait()
+                    .map_err(|error| format!("Failed to wait for FFmpeg: {error}"))?;
+
+                if offset == 0 && status.success() {
+                    // FFmpeg reached the end of the input normally.
+                    return Ok(None);
+                }
+
+                if offset > 0 {
+                    return Err(format!(
+                        "FFmpeg ended before a complete frame was received \
+                         ({offset}/{frame_size} bytes). Exit status: {status}"
+                    ));
+                }
+
+                return Err(format!("FFmpeg exited with status: {status}"));
             }
 
             offset += bytes_read;
@@ -174,5 +189,15 @@ impl FfmpegDecoder {
             height: self.height,
             pixels,
         }))
+    }
+}
+
+impl Drop for FfmpegDecoder {
+    fn drop(&mut self) {
+        // std::process::Child does not terminate the OS process when the
+        // Child handle is dropped. Explicitly stop FFmpeg so toggling video
+        // cannot leave orphaned decoder processes behind.
+        let _ = self.process.kill();
+        let _ = self.process.wait();
     }
 }

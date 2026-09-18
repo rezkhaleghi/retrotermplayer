@@ -29,8 +29,7 @@ impl Renderer for TvRenderer {
         let screen = screen.strip_prefix("\x1b[H").unwrap_or(&screen);
 
         let screen_width = frame.width;
-        let screen_height = (frame.height + 1) / 2;
-
+        let screen_height = frame.height.div_ceil(2);
         // The actual screen rows have:
         //
         // ║ + 2 spaces + screen + 2 spaces + ║
@@ -138,7 +137,7 @@ fn render_wood_panel(output: &mut String, row: usize) {
 
     for index in 0..PANEL_WIDTH {
         // Replace an existing character with the dot.
-        if row % 11 == 0 && index == 8 {
+        if row.is_multiple_of(11) && index == 8 {
             output.push('●');
         } else {
             output.push(chars.next().unwrap_or(' '));

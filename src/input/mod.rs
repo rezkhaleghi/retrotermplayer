@@ -204,10 +204,8 @@ fn browse_directory() -> io::Result<Option<String>> {
                 return Ok(None);
             }
 
-            if input.trim() == "0" {
-                if !go_parent(&mut current) {
-                    return Ok(None);
-                }
+            if input.trim() == "0" && !go_parent(&mut current) {
+                return Ok(None);
             }
 
             continue;

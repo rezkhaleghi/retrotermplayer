@@ -21,6 +21,12 @@ impl VhsRenderer {
     }
 }
 
+impl Default for VhsRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Renderer for VhsRenderer {
     fn render(&mut self, frame: &VideoFrame, output: &mut String) {
         self.frame_counter += 1;
@@ -37,7 +43,7 @@ impl Renderer for VhsRenderer {
             for x in 0..frame.width {
                 // VHS distortion is applied by reading a slightly shifted
                 // source pixel on occasional frames.
-                let shifted_x = if self.frame_counter % 37 == 0 {
+                let shifted_x = if self.frame_counter.is_multiple_of(37) {
                     x.saturating_sub(2)
                 } else {
                     x

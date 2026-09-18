@@ -43,7 +43,7 @@ impl YouTubeSource {
     pub fn resolve_stream(&self, quality: VideoQuality) -> Result<String, String> {
         let format = match quality {
             VideoQuality::Low => "worstvideo",
-            VideoQuality::Medium => "bestvideo[height<=360]/bestvideo",
+            VideoQuality::Medium => "bestvideo[height<=360]/worstvideo",
             VideoQuality::High => "bestvideo[height<=720]/bestvideo",
         };
 

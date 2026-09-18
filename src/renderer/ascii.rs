@@ -19,6 +19,12 @@ impl AsciiRenderer {
     }
 }
 
+impl Default for AsciiRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Renderer for AsciiRenderer {
     fn render(&mut self, frame: &VideoFrame, output: &mut String) {
         // Reuse the existing String allocation from the previous frame.

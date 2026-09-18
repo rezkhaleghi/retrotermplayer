@@ -23,6 +23,12 @@ impl VideoRenderer {
     }
 }
 
+impl Default for VideoRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Renderer for VideoRenderer {
     fn render(&mut self, frame: &VideoFrame, output: &mut String) {
         output.clear();
