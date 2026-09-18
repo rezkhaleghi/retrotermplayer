@@ -1,82 +1,66 @@
 # RetroTermPlayer
 
-A small, dependency-free Rust terminal video renderer/player.
+A small Rust terminal video player that renders video directly inside the terminal.
 
-RetroTermPlayer takes a local video file, direct media URL, or YouTube URL, decodes it through **FFmpeg**, and renders the video directly inside a terminal using ANSI escape sequences.
+RetroTermPlayer uses **FFmpeg** for decoding and supports local files, direct media URLs, and YouTube videos through **yt-dlp**.
 
-The project is intentionally simple and modular so the rendering engine can eventually be reused inside other projects such as **PJ-PLAYER**.
+The project is intentionally lightweight and modular, with the rendering engine designed to eventually be reusable inside projects such as **PJ-PLAYER**.
 
 ---
 
 ## Features
 
-- 🎞️ Play local video files
-- 🌐 Play direct media URLs
-- ▶️ Play YouTube videos through `yt-dlp`
-- 🖥️ Render video directly inside the terminal
-- 🎨 Truecolor terminal rendering
-- 🔤 Retro ASCII rendering
-- 📺 Retro ANSI color rendering
-- 📼 VHS-style rendering
-- 🎬 Normal terminal video rendering
-- ⚡ No Rust runtime dependencies
-- 🔧 Uses external `ffmpeg` and `yt-dlp`
-- 🧩 Modular source / decoder / renderer / player architecture
-- 🧪 Compare all four renderers simultaneously with `compare.sh`
+- 🎞️ Local video playback
+- 🌐 Direct HTTP/HTTPS media URLs
+- ▶️ YouTube playback through `yt-dlp`
+- 🖥️ Video rendered directly in the terminal
+- 📺 CRT / retro TV cabinet around the video
+- 🔤 Retro ASCII renderer
+- 🎨 Retro color renderer
+- 📼 VHS-style renderer
+- 🎬 Truecolor video renderer
+- 📁 Interactive offline browser
+- 🔎 Recursive video search
+- `~` and `$HOME` path expansion
+- Quoted paths supported
+- No Rust runtime dependencies
+- FFmpeg-based decoding
+- Modular source / decoder / player / renderer architecture
 
 ---
 
 # How It Works
 
-RetroTermPlayer uses a simple media pipeline:
+The core pipeline is intentionally simple:
 
 ```text
-                ┌──────────────┐
-                │ Video Source │
-                └──────┬───────┘
-                       │
-             ┌─────────┴─────────┐
-             │                   │
-          Local               YouTube
-             │                   │
-             │                yt-dlp
-             │                   │
-             └─────────┬─────────┘
-                       │
-                       ▼
-                ┌─────────────┐
-                │   FFmpeg    │
-                │   Decoder   │
-                └──────┬──────┘
-                       │
-                   RGB frames
-                       │
-                       ▼
-                ┌─────────────┐
-                │   Player    │
-                └──────┬──────┘
-                       │
-                       ▼
-                 ┌───────────┐
-                 │ Renderer  │
-                 └─────┬─────┘
-                       │
-        ┌──────────────┼──────────────┐
-        │              │              │
-        ▼              ▼              ▼
-      ASCII          Color           VHS
-                                       │
-                                       ▼
-                                     Video
+Video Source
+     │
+     ▼
+Source Resolver
+     │
+     ▼
+FFmpeg Decoder
+     │
+     ▼
+RGB Video Frames
+     │
+     ▼
+Player
+     │
+     ▼
+Renderer
+     │
+     ▼
+CRT / TV Wrapper
+     │
+     ▼
+Terminal
 ```
 
-The important separation is:
+Source-specific logic stays inside the source layer.
 
-```text
-Source → Decoder → Player → Renderer → Terminal
-```
-
-Each part has a specific responsibility.
+The renderer does not need to know whether the video came from a local file, a URL, or YouTube.
 
 ---
 
@@ -84,7 +68,7 @@ Each part has a specific responsibility.
 
 ## Rust
 
-Install Rust through `rustup` if it is not already installed.
+Install Rust through [rustup](https://rustup.rs/) if it is not already installed.
 
 Check:
 
@@ -92,8 +76,6 @@ Check:
 rustc --version
 cargo --version
 ```
-
----
 
 ## FFmpeg
 
@@ -107,17 +89,13 @@ ffmpeg -version
 
 ### macOS
 
-Using Homebrew:
-
 ```bash
 brew install ffmpeg
 ```
 
----
-
 ## yt-dlp
 
-`yt-dlp` is required for YouTube URLs.
+`yt-dlp` is required for YouTube playback.
 
 Check:
 
@@ -130,8 +108,6 @@ yt-dlp --version
 ```bash
 brew install yt-dlp
 ```
-
-You can also install it through Python/pip or another supported method.
 
 ---
 
@@ -150,23 +126,126 @@ Build:
 cargo build
 ```
 
-Run the project:
+---
+
+# Usage
+
+RetroTermPlayer supports both an interactive interface and the original command-line interface.
+
+## Interactive Mode
+
+Run:
+
+```bash
+cargo run
+```
+
+You will see:
+
+```text
+╔══════════════════════════════════════╗
+║          RETROTERMPLAYER             ║
+╚══════════════════════════════════════╝
+
+1. Online
+2. Offline
+
+Select:
+```
+
+### Online
+
+Select `1` and enter a video URL:
+
+```text
+ONLINE
+
+Video URL:
+```
+
+HTTP and HTTPS URLs are supported.
+
+YouTube URLs are automatically detected and resolved through `yt-dlp`.
+
+### Offline
+
+Select `2`:
+
+```text
+OFFLINE
+
+1. Enter path
+2. Browse
+3. Search
+
+Select:
+```
+
+#### Enter path
+
+You can enter a normal path:
+
+```text
+/Users/reza/Movies/video.mp4
+```
+
+Home-directory shortcuts are supported:
+
+```text
+~/Movies/video.mp4
+$HOME/Movies/video.mp4
+```
+
+Quoted paths are also accepted:
+
+```text
+"$HOME/Movies/video.mp4"
+```
+
+#### Browse
+
+The browser lets you navigate directories and select a video file.
+
+```text
+OFFLINE BROWSER
+
+/Users/reza/Downloads
+
+0. ..
+ 1. Movies/
+ 2. video.mp4
+ 3. another-video.mkv
+
+q. Cancel
+```
+
+#### Search
+
+Search recursively from the current directory:
+
+```text
+Search: sons
+```
+
+Matching video files are then listed for selection.
+
+---
+
+# Command-Line Mode
+
+The original CLI interface is still supported:
 
 ```bash
 cargo run -- <source> <renderer>
 ```
 
----
-
-# Usage
-
-The basic syntax is:
+For example:
 
 ```bash
-cargo run -- <video-url-or-file-path> <renderer>
+cargo run -- video.mkv 4
 ```
 
-The renderer is a number from `1` to `4`.
+The renderer numbers are:
 
 | Renderer | Mode        |
 | -------- | ----------- |
@@ -177,179 +256,143 @@ The renderer is a number from `1` to `4`.
 
 ---
 
-# Renderer 1 — Retro ASCII
+# Renderers
+
+All four renderers are wrapped inside the retro CRT television cabinet.
+
+## 1. Retro ASCII
 
 ```bash
-cargo run -- "VIDEO_SOURCE" 1
+cargo run -- video.mkv 1
 ```
 
-The video is converted into a monochrome-style terminal representation using block characters.
-
-Example:
+A monochrome renderer using block characters.
 
 ```text
-████████████████████████████████████
-██████████▀▀▀▀▀▀▀▀▀▀████████████████
-██████▀▀              ▀▀████████████
-████                      ██████████
-███                        █████████
-████                      ██████████
-██████▀▀              ▀▀████████████
-██████████▄▄▄▄▄▄▄▄▄▄████████████████
-████████████████████████████████████
+████████████████████████████
+██████▀▀▀▀▀▀▀▀▀▀▀▀██████████
+████                  ██████
+███                    █████
+████                  ██████
+██████▄▄▄▄▄▄▄▄▄▄▄▄██████████
+████████████████████████████
 ```
 
-This mode intentionally sacrifices color and detail for a strong terminal / ASCII aesthetic.
+Designed for:
 
-### Characteristics
-
-- Low rendering overhead
+- Low visual complexity
 - Low terminal bandwidth
-- High contrast
-- Monochrome/block-based appearance
-- Good for small terminals
-- Retro computer aesthetic
+- Strong contrast
+- Retro computer aesthetics
 
 ---
 
-# Renderer 2 — Retro Color
+## 2. Retro Color
 
 ```bash
-cargo run -- "VIDEO_SOURCE" 2
+cargo run -- video.mkv 2
 ```
 
-Uses ANSI 256-color rendering.
+Uses ANSI colors and half-block characters.
 
-The renderer uses terminal half-block characters:
+A single terminal cell can represent two vertical pixels:
 
 ```text
 ▀
 ```
 
-One terminal cell represents two vertical pixels:
+The foreground represents the upper pixel while the background represents the lower pixel.
 
-```text
-┌───────────────┐
-│ upper pixel   │
-│      ▀        │
-│ lower pixel   │
-└───────────────┘
-```
-
-The foreground color represents the upper pixel and the background color represents the lower pixel.
-
-This effectively doubles the vertical visual resolution compared with using one character per pixel.
-
-### Characteristics
-
-- ANSI 256 colors
-- Half-block rendering
-- Better color reproduction than ASCII
-- Still relatively lightweight
-- Strong retro terminal appearance
+This provides considerably more visual information than ordinary ASCII rendering while keeping the output relatively lightweight.
 
 ---
 
-# Renderer 3 — VHS
+## 3. VHS
 
 ```bash
-cargo run -- "VIDEO_SOURCE" 3
+cargo run -- video.mkv 3
 ```
 
-The VHS renderer starts with color terminal rendering and adds visual degradation intended to resemble old analog video.
+The VHS renderer builds on terminal color rendering and applies a deliberately degraded analog-video aesthetic.
 
-The goal is not to destroy the image.
-
-Instead, it aims for subtle imperfections such as:
+The effect can include things such as:
 
 - Scanlines
-- Slight brightness fluctuations
-- Small color inconsistencies
-- Mild tracking distortion
-- Analog-style visual noise
-- Occasional frame instability
+- Brightness variation
+- Color imperfections
+- Tracking-style distortion
+- Analog noise
+- Small visual instability
 
-The exact effects are intentionally implemented in the renderer rather than modifying the source video itself.
-
-This keeps the original decoded frame available to other renderers.
+The effects are applied to the rendered output rather than modifying the original video.
 
 ---
 
-# Renderer 4 — Video
+## 4. Video
 
 ```bash
-cargo run -- "VIDEO_SOURCE" 4
+cargo run -- video.mkv 4
 ```
 
-The Video renderer is the closest mode to normal video playback.
+The highest-quality renderer.
 
 It uses:
 
 - RGB frames
 - ANSI truecolor
 - Half-block rendering
-- Higher rendering resolution
+- Higher resolution
 - Higher frame rate
 
-Example ANSI colors:
+It is still terminal video, so it is fundamentally limited by the terminal's dimensions and rendering performance.
 
-```text
-\x1b[38;2;255;0;0m
-\x1b[48;2;0;0;255m
-```
-
-The terminal therefore receives actual RGB color values instead of a reduced 256-color palette.
-
-### Important
-
-This is still terminal video.
-
-It is not equivalent to playing the video in VLC, QuickTime, mpv, or a graphical video player.
-
-The terminal imposes several limitations:
-
-- Terminal dimensions
-- Character-cell geometry
-- ANSI output bandwidth
-- Terminal rendering performance
-- CPU usage
-- Source resolution
-
-The renderer therefore targets the available terminal resolution rather than attempting to render an arbitrary 1080p/4K frame directly.
+It is not intended to compete with graphical players such as VLC, mpv, or QuickTime.
 
 ---
 
 # Video Sources
 
-RetroTermPlayer supports three source types.
+## Local Files
 
-## 1. Local files
-
-You can provide a normal filesystem path:
+Any supported local video file can be supplied directly:
 
 ```bash
 cargo run -- "/Users/reza/Movies/video.mp4" 4
 ```
 
-Home-directory paths are also supported:
+Supported formats currently include:
 
-```bash
-cargo run -- "~/Movies/video.mp4" 4
+```text
+mp4
+mkv
+webm
+mov
+m4v
+avi
+wmv
+flv
+mpg
+mpeg
+ts
+mts
+m2ts
+3gp
+ogv
 ```
 
-The source resolver automatically detects existing files.
+FFmpeg ultimately handles the actual media decoding.
 
 ---
 
-## 2. Direct media URLs
+## Direct URLs
 
-HTTP/HTTPS URLs can be passed directly:
+HTTP and HTTPS media URLs can be passed directly:
 
 ```bash
 cargo run -- "https://example.com/video.mp4" 4
 ```
 
-RTMP and RTSP sources are also recognized:
+RTMP and RTSP URLs are also recognized by the source resolver:
 
 ```bash
 cargo run -- "rtmp://example.com/live" 4
@@ -359,29 +402,19 @@ cargo run -- "rtmp://example.com/live" 4
 cargo run -- "rtsp://example.com/live" 4
 ```
 
-FFmpeg handles the actual media decoding.
+Whether a particular stream can be played depends on FFmpeg's support for that source.
 
 ---
 
-## 3. YouTube
+## YouTube
 
-YouTube URLs are resolved through `yt-dlp`.
-
-Example:
+YouTube URLs are resolved through `yt-dlp`:
 
 ```bash
 cargo run -- "https://www.youtube.com/watch?v=WvV5TbJc9tQ" 4
 ```
 
-The architecture deliberately keeps YouTube-specific logic inside the source layer.
-
-The rest of the application does not need to know that the source came from YouTube.
-
----
-
-# YouTube Source Resolution
-
-The YouTube pipeline is:
+The flow is:
 
 ```text
 YouTube URL
@@ -390,99 +423,81 @@ YouTube URL
    yt-dlp
      │
      ▼
-Direct media stream URL
+Media stream URL
      │
      ▼
    FFmpeg
      │
      ▼
-RGB frames
+ RGB frames
 ```
 
-This means the renderer does not depend on YouTube.
-
-It receives exactly the same `VideoFrame` regardless of whether the original source was:
-
-```text
-local.mp4
-```
-
-or:
-
-```text
-https://example.com/video.mp4
-```
-
-or:
-
-```text
-https://youtube.com/watch?v=...
-```
-
-That separation is important for keeping the rendering engine reusable.
+YouTube-specific logic remains isolated from the decoder and renderers.
 
 ---
 
-# Comparing All Four Modes
+# Decoder Profiles
 
-The project includes a helper script for comparing the four renderers simultaneously.
+Different rendering modes do not need the same amount of video data.
 
-The root directory contains:
+Retro modes use smaller frames and lower frame rates, while the Video renderer uses a larger profile.
 
-```text
-compare.sh
-```
-
-The script currently uses:
+Conceptually:
 
 ```text
-https://www.youtube.com/watch?v=WvV5TbJc9tQ&list=RDWvV5TbJc9tQ&start_radio=1
+Retro
+ ├── smaller resolution
+ └── lower FPS
+
+VHS
+ ├── smaller resolution
+ └── lower FPS
+
+Video
+ ├── larger resolution
+ └── higher FPS
 ```
 
-Make sure it is executable:
+This prevents the application from unnecessarily processing large source frames when the renderer cannot display them.
 
-```bash
-chmod +x compare.sh
-```
+---
 
-Then simply run:
+# CRT / Retro TV
 
-```bash
-./compare.sh
-```
+Every renderer is currently wrapped in a reusable CRT television renderer.
 
-On macOS this opens four Terminal windows.
-
-Each window runs one renderer:
+Conceptually:
 
 ```text
-Terminal 1 → Retro ASCII
-Terminal 2 → Retro Color
-Terminal 3 → VHS
-Terminal 4 → Video
+┌─────────────────────────────────────────┐
+│                                         │
+│       ┌─────────────────────────┐       │
+│       │                         │       │
+│       │       VIDEO FRAME       │       │
+│       │                         │       │
+│       └─────────────────────────┘       │
+│                                         │
+│   ░▒▓░▒▓░▒▓░▒▓░▒▓░▒▓░▒▓░▒▓░▒▓░▒▓       │
+└─────────────────────────────────────────┘
 ```
 
-This is useful when tuning renderer quality because all four modes can be observed using the same source.
+The TV wrapper does not know how the actual image is rendered.
 
-### Performance note
+It simply takes the output of another renderer and places it inside the cabinet.
 
-Running four instances simultaneously means:
-
-```text
-4 × FFmpeg
-4 × Rust renderer
-4 × terminal output
-```
-
-Therefore this comparison is intended primarily for **visual comparison**, not performance benchmarking.
-
-CPU usage will naturally be much higher.
+This keeps the TV effect independent from the four rendering modes.
 
 ---
 
 # Architecture
 
-The project is intentionally split into independent layers.
+The project follows a small pipeline:
+
+```text
+Source → Decoder → Player → Renderer → Terminal
+```
+
+Current structure:
 
 ```text
 src/
@@ -496,6 +511,7 @@ src/
 │   ├── mod.rs
 │   ├── direct.rs
 │   ├── local.rs
+│   ├── offline.rs
 │   └── youtube.rs
 │
 ├── decoder/
@@ -507,7 +523,8 @@ src/
 │   ├── ascii.rs
 │   ├── color.rs
 │   ├── vhs.rs
-│   └── video.rs
+│   ├── video.rs
+│   └── tv.rs
 │
 ├── player/
 │   └── mod.rs
@@ -516,70 +533,33 @@ src/
     └── mod.rs
 ```
 
----
+### Input
 
-# Input
+Handles:
 
-```text
-src/input/
-```
+- Interactive startup
+- Online/offline selection
+- Local path input
+- Directory browsing
+- Recursive search
+- Renderer selection
+- CLI arguments
 
-Responsible for command-line input.
+### Source
 
-Example:
-
-```bash
-cargo run -- "video.mp4" 2
-```
-
-It produces:
-
-```rust
-Input {
-    source,
-    renderer,
-}
-```
-
-Interactive startup input is intentionally avoided.
-
-This means the application does not need to consume stdin just to select the video and renderer.
-
-That also keeps stdin available for future playback controls.
-
----
-
-# Source
+Handles source identification and resolution:
 
 ```text
-src/source/
+Local
+Direct
+YouTube
 ```
 
-Responsible for identifying and resolving media sources.
+### Decoder
 
-Current source types:
+Starts FFmpeg and converts the source into raw RGB frames.
 
-```rust
-VideoSource::Local
-VideoSource::Direct
-VideoSource::YouTube
-```
-
-The source layer hides source-specific details from the decoder.
-
-For example, the decoder does not need to know how YouTube URLs are resolved.
-
----
-
-# Decoder
-
-```text
-src/decoder/
-```
-
-Responsible for starting FFmpeg and converting the media stream into raw RGB frames.
-
-The decoder outputs:
+The decoder exposes frames as:
 
 ```rust
 VideoFrame {
@@ -589,99 +569,25 @@ VideoFrame {
 }
 ```
 
-The frame contains:
+### Player
+
+Controls the playback loop and frame timing.
 
 ```text
-RGB RGB RGB RGB ...
-```
-
-with three bytes per pixel.
-
-Conceptually:
-
-```text
-Video
+Decode
   ↓
-FFmpeg
+Render
   ↓
-RGB24
+Draw
   ↓
-VideoFrame
+Wait
+  ↓
+Next frame
 ```
 
----
+### Renderer
 
-# Decoder Profiles
-
-Different renderers have different requirements.
-
-A retro renderer does not need the same source resolution or frame rate as the normal video renderer.
-
-The decoder therefore supports profiles.
-
-Conceptually:
-
-```text
-RETRO
-├── small resolution
-└── lower FPS
-
-VHS
-├── small/medium resolution
-└── lower FPS
-
-VIDEO
-├── larger resolution
-└── higher FPS
-```
-
-This prevents every renderer from unnecessarily processing large frames.
-
----
-
-# Player
-
-```text
-src/player/
-```
-
-The player controls playback timing.
-
-Its responsibility is:
-
-```text
-decode frame
-     ↓
-render frame
-     ↓
-draw frame
-     ↓
-wait for target frame interval
-     ↓
-next frame
-```
-
-The player does not know how a frame is rendered.
-
-It only knows that a renderer implements:
-
-```rust
-trait Renderer {
-    fn render(&mut self, frame: &VideoFrame) -> String;
-}
-```
-
-This makes it possible to add new rendering modes without changing the playback engine.
-
----
-
-# Renderer
-
-```text
-src/renderer/
-```
-
-Contains the visual presentation layer.
+Converts RGB frames into terminal output.
 
 Current renderers:
 
@@ -690,437 +596,118 @@ AsciiRenderer
 ColorRenderer
 VhsRenderer
 VideoRenderer
+TvRenderer
 ```
 
-All implement the same interface:
+`TvRenderer` acts as a wrapper around the other renderers.
 
-```rust
-pub trait Renderer {
-    fn render(&mut self, frame: &VideoFrame) -> String;
-}
-```
+### Terminal
 
-This means the player can work with any renderer.
+Handles terminal-specific operations such as:
 
-Adding a new renderer should not require modifying:
-
-- FFmpeg
-- source resolution
-- player timing
-- terminal management
-
-Only the renderer needs to be added.
+- Alternate screen
+- Cursor visibility
+- Screen clearing
+- Cursor positioning
+- ANSI output
+- Terminal restoration
 
 ---
 
-# Terminal
+# Comparing the Renderers
+
+The repository includes:
 
 ```text
-src/terminal/
+compare.sh
 ```
 
-Responsible for terminal-specific operations:
-
-- Clearing the terminal
-- Moving the cursor
-- Hiding the cursor
-- Writing rendered frames
-- Restoring the cursor
-- Resetting terminal colors
-
-The renderer produces ANSI output.
-
-The terminal layer is responsible for displaying it.
-
----
-
-# Why Half-Block Rendering?
-
-A normal terminal character occupies one cell:
-
-```text
-┌───┐
-│ A │
-└───┘
-```
-
-A half-block character allows two vertical pixels to be represented in one cell:
-
-```text
-▀
-```
-
-The upper half uses the foreground color.
-
-The lower half uses the background color.
-
-Therefore:
-
-```text
-RGB pixel
-RGB pixel
-```
-
-becomes:
-
-```text
-▀
-```
-
-with two different colors.
-
-This gives the player considerably more vertical visual information than ordinary ASCII rendering.
-
----
-
-# Color Modes
-
-## ANSI 256 Color
-
-Retro Color and VHS use the terminal's 256-color palette.
-
-The renderer converts:
-
-```text
-RGB 0-255
-```
-
-into:
-
-```text
-ANSI color 0-255
-```
-
-This reduces color precision but significantly reduces the amount of color information that must be represented.
-
----
-
-## ANSI Truecolor
-
-The Video renderer uses:
-
-```text
-RGB 24-bit
-```
-
-through ANSI truecolor sequences.
-
-Example:
-
-```text
-ESC[38;2;255;100;50m
-```
-
-This allows the renderer to preserve substantially more color information.
-
-Truecolor support depends on the terminal emulator.
-
-Modern macOS terminals generally support it.
-
----
-
-# Terminal Resolution
-
-The terminal itself is one of the biggest limitations.
-
-For example, a terminal with:
-
-```text
-100 columns × 25 rows
-```
-
-cannot display a 1920×1080 image at its original resolution.
-
-RetroTermPlayer therefore scales the source video before sending frames to the terminal.
-
-The general pipeline is:
-
-```text
-1920 × 1080 source
-        ↓
-FFmpeg scaling
-        ↓
-terminal-sized RGB frame
-        ↓
-half-block renderer
-        ↓
-100 × 25 terminal
-```
-
-The source resolution and terminal resolution are therefore separate concepts.
-
-A higher-quality source does not automatically produce more terminal pixels.
-
----
-
-# Why Normal Video Can Still Look Low Quality
-
-There are several independent limits.
-
-## 1. Terminal resolution
-
-A terminal might only provide:
-
-```text
-100 × 25
-```
-
-cells.
-
----
-
-## 2. Frame size
-
-The decoder intentionally scales the video to a terminal-friendly size.
-
----
-
-## 3. ANSI output
-
-Every rendered frame becomes a large string of ANSI escape sequences.
-
-For example:
-
-```text
-RGB frame
-    ↓
-color escape codes
-    ↓
-terminal characters
-    ↓
-stdout
-    ↓
-terminal emulator
-```
-
-This can become expensive at high resolutions and frame rates.
-
----
-
-## 4. Terminal rendering speed
-
-The terminal itself must parse and draw every ANSI sequence.
-
-At sufficiently high frame rates, the terminal can become the bottleneck.
-
----
-
-## 5. Source quality
-
-The quality of the original stream also matters.
-
-A low-quality YouTube stream cannot be reconstructed into a high-quality image simply by increasing the terminal resolution.
-
----
-
-# Why FFmpeg Is External
-
-FFmpeg is intentionally not implemented inside Rust.
-
-FFmpeg already provides:
-
-- Container parsing
-- Codec support
-- Hardware acceleration
-- Scaling
-- Frame-rate conversion
-- Network protocols
-- Image conversion
-- Hundreds of video/audio codecs
-
-Reimplementing that functionality would make the project significantly larger and less reliable.
-
-RetroTermPlayer therefore uses FFmpeg as a media backend.
-
-Rust handles:
-
-```text
-application architecture
-source management
-playback
-rendering
-terminal interaction
-```
-
-FFmpeg handles:
-
-```text
-media decoding
-```
-
----
-
-# Why There Are No Rust Dependencies
-
-The current `Cargo.toml` intentionally contains no runtime dependencies.
-
-```toml
-[dependencies]
-```
-
-The goal is to keep the core player lightweight.
-
-External tools are allowed:
-
-```text
-ffmpeg
-yt-dlp
-```
-
-The distinction is intentional:
-
-```text
-Rust dependency
-    ↓
-compiled into application
-
-External media tool
-    ↓
-replaceable backend
-```
-
-This also makes it easier to experiment with different media backends in the future.
-
----
-
-# Current Limitations
-
-RetroTermPlayer is still an experimental player.
-
-Current limitations include:
-
-- Terminal resolution limits visual quality
-- Terminal output can become CPU-intensive
-- High resolutions produce large ANSI output
-- Four simultaneous players consume significant CPU
-- Audio playback is not currently implemented
-- YouTube currently relies on `yt-dlp`
-- FFmpeg must be installed separately
-- yt-dlp must be installed for YouTube playback
-- Playback controls are not yet fully implemented
-- Terminal truecolor support varies between terminals
-- Network sources depend on network stability
-- Some URLs may not be supported directly by FFmpeg
-- Some websites may require yt-dlp rather than direct FFmpeg access
-
----
-
-# Audio
-
-Audio is intentionally not part of the current rendering pipeline.
-
-The current pipeline is:
-
-```text
-Source
-  ↓
-FFmpeg
-  ↓
-RGB video frames
-  ↓
-Renderer
-  ↓
-Terminal
-```
-
-There is currently no:
-
-```text
-audio decoder
-audio output
-audio synchronization
-```
-
-This is deliberate.
-
-The project started as a visual terminal renderer.
-
-Audio can be introduced later without requiring the renderers themselves to understand audio.
-
-A future architecture could look like:
-
-```text
-                    ┌──→ Video Decoder ──→ Renderer ──→ Terminal
-Source ──→ Player ──┤
-                    └──→ Audio Decoder ──→ Audio Output
-```
-
----
-
-# Future Direction
-
-RetroTermPlayer is intended to evolve into a reusable terminal media engine.
-
-Potential future features include:
-
-- Playback controls
-- Pause / resume
-- Seeking
-- Frame stepping
-- Volume control
-- Audio playback
-- Audio/video synchronization
-- Terminal-size detection
-- Better frame scheduling
-- More sophisticated VHS effects
-- More rendering modes
-- Braille rendering
-- Unicode shading
-- Dithering
-- Truecolor image optimization
-- Hardware-accelerated decoding where available
-- Better YouTube format selection
-- Broader yt-dlp source support
-- Reusable integration into PJ-PLAYER
-
----
-
-# Relationship With PJ-PLAYER
-
-RetroTermPlayer is intentionally designed so its rendering system can eventually be reused by [PJ-PLAYER](https://github.com/rezkhaleghi/pj-player).
-
-PJ-PLAYER is primarily a terminal music player.
-
-RetroTermPlayer explores the video side of terminal media playback.
-
-The long-term concept is:
-
-```text
-                 PJ-PLAYER
-                     │
-              ┌──────┴──────┐
-              │             │
-           Audio          Video
-              │             │
-              │      RetroTermPlayer
-              │             │
-              ▼             ▼
-           Audio          Terminal
-           Output          Renderer
-```
-
-The projects can remain separate while their reusable components mature.
-
----
-
-# Development
-
-Build:
+Make it executable:
 
 ```bash
-cargo build
+chmod +x compare.sh
 ```
 
 Run:
 
 ```bash
-cargo run -- "video.mp4" 1
+./compare.sh
 ```
 
-Run with a YouTube URL:
+The script launches the four renderers using the same source so they can be visually compared.
+
+```text
+Terminal 1 → Retro ASCII
+Terminal 2 → Retro Color
+Terminal 3 → VHS
+Terminal 4 → Video
+```
+
+This is primarily a **visual comparison tool**, not a performance benchmark.
+
+Running four FFmpeg processes and four terminal renderers simultaneously naturally consumes considerably more CPU and resources.
+
+---
+
+# Performance
+
+Terminal video is fundamentally different from graphical video playback.
+
+For every frame, the application must:
+
+```text
+Decode video
+    ↓
+Scale frame
+    ↓
+Convert pixels
+    ↓
+Generate ANSI output
+    ↓
+Write to terminal
+    ↓
+Terminal parses and renders output
+```
+
+The main limitations are therefore:
+
+- Terminal dimensions
+- ANSI output size
+- Terminal rendering speed
+- Frame resolution
+- Frame rate
+- FFmpeg decoding cost
+- Network speed for online sources
+
+The decoder intentionally scales frames before rendering so that the application does not process unnecessary resolution.
+
+---
+
+# Dependencies
+
+The Rust project currently has no runtime Cargo dependencies:
+
+```toml
+[dependencies]
+```
+
+Media decoding is delegated to external tools:
+
+```text
+FFmpeg
+yt-dlp
+```
+
+This keeps the Rust side small while relying on mature media software for codec and container support.
+
+---
+
+# Testing
+
+Format the project:
 
 ```bash
-cargo run -- "https://www.youtube.com/watch?v=WvV5TbJc9tQ" 4
+cargo fmt
 ```
 
 Check formatting:
@@ -1129,10 +716,10 @@ Check formatting:
 cargo fmt --check
 ```
 
-Format:
+Run the compiler checks:
 
 ```bash
-cargo fmt
+cargo check
 ```
 
 Run tests:
@@ -1141,38 +728,98 @@ Run tests:
 cargo test
 ```
 
-Check the project:
+---
 
-```bash
-cargo check
-```
+# Current Limitations
+
+RetroTermPlayer is still an experimental project.
+
+Current limitations include:
+
+- Terminal resolution limits visual quality
+- ANSI rendering can become CPU-intensive at higher resolutions
+- Terminal size affects the usable picture area
+- FFmpeg must be installed separately
+- `yt-dlp` is required for YouTube sources
+- Network playback depends on connection stability
+- Some media URLs may not be directly supported by FFmpeg
+- Audio playback is not currently implemented
+- Playback controls are not yet implemented
+- Terminal truecolor support depends on the terminal emulator
 
 ---
 
-# Project Philosophy
+# Audio
 
-RetroTermPlayer is deliberately small.
+Audio is intentionally outside the current scope.
 
-The goal is not to build another FFmpeg.
+The current pipeline is:
 
-The goal is to build a clean Rust layer around existing media tools and explore how far terminal rendering can be pushed.
+```text
+Source
+  ↓
+FFmpeg
+  ↓
+RGB Video Frames
+  ↓
+Renderer
+  ↓
+Terminal
+```
 
-The architecture follows a simple rule:
+There is currently no audio output or audio/video synchronization layer.
+
+This project started as an experiment in terminal video rendering. Audio can be added later without requiring the renderers themselves to understand audio.
+
+---
+
+# PJ-PLAYER
+
+RetroTermPlayer is also an exploration of a reusable terminal video engine for [PJ-PLAYER](https://github.com/rezkhaleghi/pj-player).
+
+The long-term idea is to keep the responsibilities separate:
+
+```text
+PJ-PLAYER
+   │
+   ├── Audio playback
+   │
+   └── Optional terminal video
+             │
+             ▼
+       RetroTermPlayer
+             │
+             ├── YouTube / media source
+             ├── FFmpeg decoder
+             └── Terminal renderer
+```
+
+RetroTermPlayer remains a standalone project while the rendering components are developed independently.
+
+---
+
+# Development Philosophy
+
+RetroTermPlayer deliberately avoids unnecessary complexity.
+
+The core rule is:
 
 > **Each component should do one thing and know as little as possible about the others.**
 
-Source handling should not know about rendering.
+The source layer should not know about rendering.
 
-Rendering should not know about YouTube.
+The renderer should not know where the video came from.
 
-The player should not know about ANSI color implementation.
+The player should not know how ANSI rendering works.
 
-The terminal should not know where the video came from.
+The terminal should not care whether the source is local, remote, or YouTube.
 
-That separation is what makes the project useful beyond the current prototype.
+The goal is a small, reusable terminal media engine rather than another media framework.
 
 ---
 
 # License
 
-License information will be added when the project is ready for its first public release.
+RetroTermPlayer is licensed under the MIT License.
+
+See [LICENSE](LICENSE) for the full license text.
