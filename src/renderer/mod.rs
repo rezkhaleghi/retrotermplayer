@@ -22,6 +22,7 @@ pub enum RendererKind {
     Color,
     Vhs,
     Video,
+    NormalVideo,
 }
 
 /// Converts decoded video frames into terminal output.
@@ -37,5 +38,6 @@ pub fn create_renderer(kind: RendererKind) -> Box<dyn Renderer> {
         RendererKind::Color => Box::new(ColorRenderer::new()),
         RendererKind::Vhs => Box::new(VhsRenderer::new()),
         RendererKind::Video => Box::new(VideoRenderer::new()),
+        RendererKind::NormalVideo => Box::new(VideoRenderer::new()),
     }
 }

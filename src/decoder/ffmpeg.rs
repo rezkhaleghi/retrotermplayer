@@ -37,6 +37,15 @@ impl DecoderProfile {
         height: 50,
         fps: 15,
     };
+
+    /// Higher-quality terminal video mode.
+    ///
+    /// Uses a larger frame and higher frame rate for clearer output.
+    pub const NORMAL_VIDEO: Self = Self {
+        width: 120,
+        height: 68,
+        fps: 24,
+    };
 }
 
 /// A decoded RGB video frame.

@@ -48,6 +48,11 @@ fn main() {
             DecoderProfile::VIDEO,
             VideoQuality::High,
         ),
+        5 => (
+            RendererKind::NormalVideo,
+            DecoderProfile::NORMAL_VIDEO,
+            VideoQuality::Normal,
+        ),
         _ => unreachable!(),
     };
 

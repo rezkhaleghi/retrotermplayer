@@ -24,6 +24,12 @@ pub enum VideoQuality {
     /// Used by normal Video mode where preserving more source detail makes
     /// the terminal output look better.
     High,
+
+    /// Prefer a video stream up to 480p.
+    ///
+    /// Used by Normal Video mode for clearer output without requesting
+    /// unnecessarily high-resolution source video.
+    Normal,
 }
 
 /// Represents a YouTube video.
@@ -45,6 +51,7 @@ impl YouTubeSource {
             VideoQuality::Low => "worstvideo",
             VideoQuality::Medium => "bestvideo[height<=360]/worstvideo",
             VideoQuality::High => "bestvideo[height<=720]/bestvideo",
+            VideoQuality::Normal => "bestvideo[height<=480]/bestvideo",
         };
 
         let output = Command::new("yt-dlp")

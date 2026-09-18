@@ -40,7 +40,8 @@ pub fn read_input() -> io::Result<Input> {
              1 = Retro ASCII\n\
              2 = Retro Color\n\
              3 = VHS\n\
-             4 = Video",
+             4 = Video\n\
+             5 = Normal Video",
         )),
 
         (None, _) => interactive_input(),
@@ -340,6 +341,7 @@ fn read_renderer() -> io::Result<usize> {
     println!("2. Retro Color");
     println!("3. VHS");
     println!("4. Video");
+    println!("5. Normal Video");
     println!();
 
     loop {
@@ -347,7 +349,7 @@ fn read_renderer() -> io::Result<usize> {
 
         match parse_renderer(input.trim()) {
             Ok(renderer) => return Ok(renderer),
-            Err(_) => println!("Please select a renderer from 0 to 4."),
+            Err(_) => println!("Please select a renderer from 0 to 5."),
         }
     }
 }
@@ -356,14 +358,14 @@ fn parse_renderer(value: &str) -> io::Result<usize> {
     let renderer = value.parse::<usize>().map_err(|_| {
         io::Error::new(
             io::ErrorKind::InvalidInput,
-            "Renderer must be a number from 0 to 4.",
+            "Renderer must be a number from 0 to 5.",
         )
     })?;
 
-    if renderer > 4 {
+    if renderer > 5 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "Renderer must be a number from 0 to 4.",
+            "Renderer must be a number from 0 to 5.",
         ));
     }
 
