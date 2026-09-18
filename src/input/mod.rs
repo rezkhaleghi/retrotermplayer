@@ -313,9 +313,9 @@ fn search_videos() -> io::Result<Option<String>> {
         }
 
         let selection = match input.trim().parse::<usize>() {
-            Ok(value) => value,
-            Err(_) => {
-                println!("Invalid selection.");
+            Ok(value) if value > 0 => value,
+            _ => {
+                println!("Please select a valid result.");
                 continue;
             }
         };

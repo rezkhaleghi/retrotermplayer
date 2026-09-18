@@ -81,6 +81,14 @@ impl FfmpegDecoder {
         profile: DecoderProfile,
         quality: VideoQuality,
     ) -> Result<Self, String> {
+        if profile.width == 0 || profile.height == 0 {
+            return Err("Decoder profile dimensions must be greater than zero.".to_string());
+        }
+
+        if profile.fps == 0 {
+            return Err("Decoder profile FPS must be greater than zero.".to_string());
+        }
+
         let input = source.resolve_for_ffmpeg(quality)?;
 
         let filter = format!(

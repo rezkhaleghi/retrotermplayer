@@ -10,26 +10,30 @@ const PANEL_WIDTH: usize = 10;
 /// complete television cabinet around it.
 pub struct TvRenderer {
     inner: Box<dyn Renderer>,
+    screen: String,
 }
 
 impl TvRenderer {
     pub fn new(inner: Box<dyn Renderer>) -> Self {
-        Self { inner }
+        Self {
+            inner,
+            screen: String::new(),
+        }
     }
 }
 
 impl Renderer for TvRenderer {
     fn render(&mut self, frame: &VideoFrame, output: &mut String) {
-        let mut screen = String::new();
-
-        self.inner.render(frame, &mut screen);
+        self.screen.clear();
+        self.inner.render(frame, &mut self.screen);
 
         output.clear();
 
-        let screen = screen.strip_prefix("\x1b[H").unwrap_or(&screen);
+        let screen = self.screen.strip_prefix("\x1b[H").unwrap_or(&self.screen);
 
         let screen_width = frame.width;
         let screen_height = frame.height.div_ceil(2);
+
         // The actual screen rows have:
         //
         // ║ + 2 spaces + screen + 2 spaces + ║
