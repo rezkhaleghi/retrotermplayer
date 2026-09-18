@@ -27,6 +27,11 @@ fn main() {
     println!("Source: {}", source.description());
 
     let (renderer_kind, decoder_profile, video_quality) = match input.renderer {
+        0 => (
+            RendererKind::AsciiShading,
+            DecoderProfile::RETRO,
+            VideoQuality::Low,
+        ),
         1 => (
             RendererKind::Ascii,
             DecoderProfile::RETRO,

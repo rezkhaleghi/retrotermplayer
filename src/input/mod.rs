@@ -36,6 +36,7 @@ pub fn read_input() -> io::Result<Input> {
              Usage:\n\
              cargo run -- <url-or-file-path> <renderer>\n\n\
              Renderer:\n\
+             0 = ASCII Shading\n\
              1 = Retro ASCII\n\
              2 = Retro Color\n\
              3 = VHS\n\
@@ -334,6 +335,7 @@ fn read_renderer() -> io::Result<usize> {
     println!();
     println!("SELECT RENDER MODE");
     println!();
+    println!("0. ASCII Shading");
     println!("1. Retro ASCII");
     println!("2. Retro Color");
     println!("3. VHS");
@@ -345,7 +347,7 @@ fn read_renderer() -> io::Result<usize> {
 
         match parse_renderer(input.trim()) {
             Ok(renderer) => return Ok(renderer),
-            Err(_) => println!("Please select a renderer from 1 to 4."),
+            Err(_) => println!("Please select a renderer from 0 to 4."),
         }
     }
 }
@@ -354,14 +356,14 @@ fn parse_renderer(value: &str) -> io::Result<usize> {
     let renderer = value.parse::<usize>().map_err(|_| {
         io::Error::new(
             io::ErrorKind::InvalidInput,
-            "Renderer must be a number from 1 to 4.",
+            "Renderer must be a number from 0 to 4.",
         )
     })?;
 
-    if !(1..=4).contains(&renderer) {
+    if renderer > 4 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "Renderer must be a number from 1 to 4.",
+            "Renderer must be a number from 0 to 4.",
         ));
     }
 
