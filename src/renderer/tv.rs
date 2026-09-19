@@ -170,18 +170,19 @@ fn render_scanline(output: &mut String, line: &str) {
     output.push_str("\x1b[22m");
 }
 
+
 fn render_controls(output: &mut String, row: usize) {
     output.push_str("\x1b[90m");
 
     let content = match row {
         0 => "● REC",
-        1 => "▶ PLAY",
+        1 => " ▶ PLAY",
         2 => "",
-        3 => "     ◉    ◉",
-        4 => "    VOL   CH",
+        3 => "◉    ◉",
+        4 => "VOL   CH",
         5 => "",
-        6 => "  ▒▒▒▒▒▒▒▒▒▒▒",
-        7 => "  ▒▒▒▒▒▒▒▒▒▒▒",
+        6 => "▒▒▒▒▒▒▒▒▒▒▒▒▒▒",
+        7 => "▒▒▒▒▒▒▒▒▒▒▒▒▒▒",
         8 => "",
         _ => "",
     };
@@ -196,15 +197,35 @@ fn render_controls(output: &mut String, row: usize) {
     let content_width = PANEL_CONTENT_WIDTH - 1;
     let visible = visible_width(content);
 
+    let left_padding = content_width
+        .saturating_sub(visible)
+        / 2;
+
+    let right_padding = content_width
+        .saturating_sub(visible + left_padding);
+
+    output.push_str(&" ".repeat(left_padding));
+
+    // REC = red, PLAY = green.
+    match row {
+        0 => output.push_str("\x1b[31m"),
+        1 => output.push_str("\x1b[32m"),
+        _ => {}
+    }
+
     output.push_str(content);
 
-    if visible < content_width {
-        output.push_str(&" ".repeat(content_width - visible));
+    if matches!(row, 0 | 1) {
+        output.push_str("\x1b[90m");
     }
+
+    output.push_str(&" ".repeat(right_padding));
 
     output.push_str("│║");
     output.push_str("\x1b[0m");
 }
+
+
 
 fn render_bottom_panel(output: &mut String, total_width: usize) {
     output.push_str("\x1b[90m║");
