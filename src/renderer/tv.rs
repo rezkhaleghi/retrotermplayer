@@ -113,18 +113,24 @@ fn render_brand_row(output: &mut String, screen_row_width: usize) {
     let right = "CRT-480";
 
     // Content between the outer left/right borders.
-    let content_width = screen_row_width - 4;
+    let content_width = screen_row_width - 2;
 
     output.push_str("\x1b[97m");
     output.push_str(left);
 
-    let remaining = content_width.saturating_sub(left.len() + right.len());
+    let remaining = content_width.saturating_sub(
+        2 + left.len() + right.len() + 2,
+    );
 
     output.push_str(&" ".repeat(remaining));
     output.push_str(right);
 
     output.push_str("\x1b[90m  ║\x1b[0m");
 }
+
+
+
+
 fn render_panel_header(output: &mut String) {
     // Exactly PANEL_WIDTH cells:
     //
