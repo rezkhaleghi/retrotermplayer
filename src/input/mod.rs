@@ -1,4 +1,3 @@
-
 use std::io::{self, Write};
 use std::path::PathBuf;
 
@@ -63,10 +62,7 @@ fn interactive_input() -> io::Result<Input> {
             },
 
             "0" => {
-                return Err(io::Error::new(
-                    io::ErrorKind::Interrupted,
-                    "Goodbye.",
-                ));
+                return Err(io::Error::new(io::ErrorKind::Interrupted, "Goodbye."));
             }
 
             _ => {
@@ -313,9 +309,7 @@ fn search_videos() -> io::Result<Option<String>> {
     println!("Searching...");
     println!();
 
-    let entries =
-        load_entries_with_cancel(&current, query, None)
-            .map_err(io::Error::other)?;
+    let entries = load_entries_with_cancel(&current, query, None).map_err(io::Error::other)?;
 
     if entries.is_empty() {
         println!("No videos found.");
@@ -329,9 +323,7 @@ fn search_videos() -> io::Result<Option<String>> {
         println!(
             "{:>2}. {}",
             index + 1,
-            path.strip_prefix(&current)
-                .unwrap_or(path)
-                .display()
+            path.strip_prefix(&current).unwrap_or(path).display()
         );
     }
 
@@ -415,9 +407,7 @@ fn prompt(message: &str) -> io::Result<String> {
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
 
-    Ok(input
-        .trim_end_matches(&['\r', '\n'][..])
-        .to_string())
+    Ok(input.trim_end_matches(&['\r', '\n'][..]).to_string())
 }
 
 fn wait_for_enter() -> io::Result<()> {

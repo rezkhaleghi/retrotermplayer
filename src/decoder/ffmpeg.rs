@@ -102,18 +102,14 @@ impl FfmpegDecoder {
 
         let input = source.resolve_for_ffmpeg(quality)?;
 
-let filter = format!(
-    "scale={}:{}:flags=lanczos:force_original_aspect_ratio=decrease,\
+        let filter = format!(
+            "scale={}:{}:flags=lanczos:force_original_aspect_ratio=decrease,\
      pad={}:{}:(ow-iw)/2:(oh-ih)/2,\
      eq=contrast=1.08:brightness=0.02:saturation=1.08,\
      unsharp=5:5:0.45:5:5:0,\
      fps={}",
-    profile.width,
-    profile.height,
-    profile.width,
-    profile.height,
-    profile.fps
-);
+            profile.width, profile.height, profile.width, profile.height, profile.fps
+        );
 
         let position = position.to_string();
 
