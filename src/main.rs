@@ -27,10 +27,7 @@ fn main() {
     let source = match resolve_source(&input.source) {
         Ok(source) => source,
         Err(error) => {
-            eprintln!(
-                "\nUnable to resolve video source:\n{error}"
-            );
-
+            eprintln!("\nUnable to resolve video source:\n{error}");
             return;
         }
     };
@@ -44,69 +41,49 @@ fn main() {
                 DecoderProfile::RETRO,
                 VideoQuality::Low,
             ),
-
             2 => (
                 RendererKind::MonoBlock,
                 DecoderProfile::RETRO,
                 VideoQuality::Low,
             ),
-
             3 => (
                 RendererKind::MonoVideo,
                 DecoderProfile::MONO_VIDEO,
                 VideoQuality::Normal,
             ),
-
             4 => (
                 RendererKind::Video,
                 DecoderProfile::VIDEO,
                 VideoQuality::High,
             ),
-
-            5 => (
-                RendererKind::TrueColor,
-                DecoderProfile::TRUE_COLOR,
-                VideoQuality::Normal,
-            ),
-
             _ => unreachable!(),
         };
 
-    let renderer =
-        create_renderer(renderer_kind);
+    // Create the actual visual renderer first.
+    let renderer = create_renderer(renderer_kind);
 
+    // Every visual mode is displayed inside the same CRT television.
     let renderer: Box<dyn Renderer> =
         Box::new(TvRenderer::new(renderer));
 
-    let decoder =
-        match FfmpegDecoder::new(
-            source,
-            decoder_profile,
-            video_quality,
-        ) {
-            Ok(decoder) => decoder,
-
-            Err(error) => {
-                eprintln!(
-                    "Failed to start FFmpeg:\n{error}"
-                );
-
-                return;
-            }
-        };
+    let decoder = match FfmpegDecoder::new(
+        source,
+        decoder_profile,
+        video_quality,
+    ) {
+        Ok(decoder) => decoder,
+        Err(error) => {
+            eprintln!("Failed to start FFmpeg:\n{error}");
+            return;
+        }
+    };
 
     let terminal = Terminal::new();
 
     let mut player =
-        Player::new(
-            decoder,
-            renderer,
-            terminal,
-        );
+        Player::new(decoder, renderer, terminal);
 
     if let Err(error) = player.play() {
-        eprintln!(
-            "\nPlayback error: {error}"
-        );
+        eprintln!("\nPlayback error: {error}");
     }
 }

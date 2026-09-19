@@ -1,3 +1,4 @@
+
 use crate::decoder::VideoFrame;
 
 use super::Renderer;
@@ -12,8 +13,8 @@ const TEMPORAL_STABILITY: f32 = 0.14;
 
 /// High-resolution monochrome video renderer.
 ///
-/// The decoder provides a 200x120 frame while the renderer produces
-/// exactly 100x30 terminal cells using half-block characters.
+/// The decoder provides a 200x120 frame and the renderer preserves
+/// the full horizontal resolution while using half-block characters.
 ///
 /// Each `▀` represents two independent luminance pixels:
 ///
@@ -161,6 +162,8 @@ impl Renderer for MonoVideoRenderer {
         output.clear();
         output.push_str("\x1b[H");
 
+        // Each half-block character represents two vertical pixels.
+        // We preserve the full horizontal resolution.
         for y in (0..frame.height).step_by(2) {
             let bottom_y =
                 (y + 1).min(frame.height - 1);
@@ -169,21 +172,6 @@ impl Renderer for MonoVideoRenderer {
             let mut current_bg: Option<u8> = None;
 
             for x in 0..frame.width {
-                /*
-                 * A 200px frame becomes 100 terminal columns
-                 * only if each pair of source pixels is represented
-                 * by one terminal cell.
-                 *
-                 * We therefore sample every second source pixel.
-                 *
-                 * The source is still high-resolution because the
-                 * image processing happens at 200x120 before this
-                 * final display reduction.
-                 */
-                if x % 2 != 0 {
-                    continue;
-                }
-
                 let top =
                     self.enhanced[y * frame.width + x];
 

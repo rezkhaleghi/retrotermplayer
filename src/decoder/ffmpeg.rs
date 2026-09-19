@@ -28,17 +28,11 @@ impl DecoderProfile {
         fps: 15,
     };
 
-    pub const TRUE_COLOR: Self = Self {
-        width: 100,
-        height: 60,
+    pub const MONO_VIDEO: Self = Self {
+        width: 200,
+        height: 120,
         fps: 15,
     };
-
-    pub const MONO_VIDEO: Self = Self {
-    width: 200,
-    height: 120,
-    fps: 15,
-};
 }
 
 /// A decoded RGB video frame.

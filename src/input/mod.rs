@@ -1,3 +1,4 @@
+
 use std::io::{self, Write};
 use std::path::PathBuf;
 
@@ -26,9 +27,8 @@ pub fn read_input() -> io::Result<Input> {
              Renderer:\n\
              1 = ASCII Shading\n\
              2 = MonoBlock\n\
-             3 = ColorBlock\n\
-             4 = Video + VHS CRT\n\
-             5 = TrueColor",
+             3 = Mono Video\n\
+             4 = Video",
         )),
 
         (None, _) => interactive_input(),
@@ -63,7 +63,10 @@ fn interactive_input() -> io::Result<Input> {
             },
 
             "0" => {
-                return Err(io::Error::new(io::ErrorKind::Interrupted, "Goodbye."));
+                return Err(io::Error::new(
+                    io::ErrorKind::Interrupted,
+                    "Goodbye.",
+                ));
             }
 
             _ => {
@@ -310,7 +313,9 @@ fn search_videos() -> io::Result<Option<String>> {
     println!("Searching...");
     println!();
 
-    let entries = load_entries_with_cancel(&current, query, None).map_err(io::Error::other)?;
+    let entries =
+        load_entries_with_cancel(&current, query, None)
+            .map_err(io::Error::other)?;
 
     if entries.is_empty() {
         println!("No videos found.");
@@ -324,7 +329,9 @@ fn search_videos() -> io::Result<Option<String>> {
         println!(
             "{:>2}. {}",
             index + 1,
-            path.strip_prefix(&current).unwrap_or(path).display()
+            path.strip_prefix(&current)
+                .unwrap_or(path)
+                .display()
         );
     }
 
@@ -364,9 +371,8 @@ fn read_renderer() -> io::Result<Option<usize>> {
     println!();
     println!("1. ASCII Shading");
     println!("2. MonoBlock");
-    println!("3. ColorBlock");
-    println!("4. Video + VHS CRT");
-    println!("5. TrueColor");
+    println!("3. Mono Video");
+    println!("4. Video");
     println!("0. Back");
     println!();
 
@@ -379,7 +385,7 @@ fn read_renderer() -> io::Result<Option<usize>> {
 
         match parse_renderer(input.trim()) {
             Ok(renderer) => return Ok(Some(renderer)),
-            Err(_) => println!("Please select a renderer from 1 to 5."),
+            Err(_) => println!("Please select a renderer from 1 to 4."),
         }
     }
 }
@@ -388,14 +394,14 @@ fn parse_renderer(value: &str) -> io::Result<usize> {
     let renderer = value.parse::<usize>().map_err(|_| {
         io::Error::new(
             io::ErrorKind::InvalidInput,
-            "Renderer must be a number from 1 to 5.",
+            "Renderer must be a number from 1 to 4.",
         )
     })?;
 
-    if !(1..=5).contains(&renderer) {
+    if !(1..=4).contains(&renderer) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "Renderer must be a number from 1 to 5.",
+            "Renderer must be a number from 1 to 4.",
         ));
     }
 
@@ -409,7 +415,9 @@ fn prompt(message: &str) -> io::Result<String> {
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
 
-    Ok(input.trim_end_matches(&['\r', '\n'][..]).to_string())
+    Ok(input
+        .trim_end_matches(&['\r', '\n'][..])
+        .to_string())
 }
 
 fn wait_for_enter() -> io::Result<()> {
