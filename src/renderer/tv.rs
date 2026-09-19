@@ -2,12 +2,9 @@ use crate::decoder::VideoFrame;
 
 use super::Renderer;
 
-const PANEL_WIDTH: usize = 10;
+const PANEL_WIDTH: usize = 20;
 
-/// Reusable CRT television wrapper.
-///
-/// The wrapped renderer provides only the picture. This renderer owns the
-/// complete television cabinet around it.
+/// Wraps any visual renderer inside the RetroTermPlayer CRT television.
 pub struct TvRenderer {
     inner: Box<dyn Renderer>,
     screen: String,
@@ -34,34 +31,32 @@ impl Renderer for TvRenderer {
         let screen_width = frame.width;
         let screen_height = frame.height.div_ceil(2);
 
-        // The actual screen rows have:
-        //
-        // ║ + 2 spaces + screen + 2 spaces + ║
-        //
-        // Keep every cabinet row based on exactly the same width.
         let screen_row_width = screen_width + 4;
+        let total_width = screen_row_width + PANEL_WIDTH + 1;
 
-        // Top frame.
-        output.push('╔');
-        output.push_str(&"═".repeat(screen_row_width + PANEL_WIDTH + 1));
-        output.push('╗');
+        render_top(output, total_width);
         output.push('\n');
 
-        // Blank row above the screen.
-        render_blank_row(output, screen_row_width);
+        render_brand_row(output, screen_row_width);
+        render_panel_header(output);
+        output.push('\n');
+
+        render_bezel_top(output, screen_row_width);
+        render_panel_separator(output);
         output.push('\n');
 
         let mut lines = screen.lines();
 
-        // Screen.
         for row in 0..screen_height {
             output.push('║');
-
-            // Left screen margin.
             output.push_str("  ");
 
             if let Some(line) = lines.next() {
-                output.push_str(line);
+                if row % 2 == 1 {
+                    render_scanline(output, line);
+                } else {
+                    output.push_str(line);
+                }
 
                 let visible = visible_width(line);
 
@@ -72,102 +67,129 @@ impl Renderer for TvRenderer {
                 output.push_str(&" ".repeat(screen_width));
             }
 
-            // Right screen margin.
             output.push_str("  ");
-
             output.push('║');
 
-            render_wood_panel(output, row);
-
+            render_controls(output, row);
             output.push('\n');
         }
 
-        // Blank row below the screen.
-        render_blank_row(output, screen_row_width);
+        render_bezel_bottom(output, screen_row_width);
+        render_panel_bottom(output);
         output.push('\n');
 
-        // Bottom textured cabinet.
-        output.push('║');
-
-        let total_width = screen_row_width + PANEL_WIDTH + 1;
-        render_texture(output, total_width);
-
-        output.push('║');
+        render_bottom_panel(output, total_width);
         output.push('\n');
 
-        // Bottom frame.
-        output.push('╚');
-        output.push_str(&"═".repeat(total_width));
-        output.push('╝');
+        render_bottom(output, total_width);
         output.push('\n');
     }
 }
 
-/// Blank cabinet row.
-///
-/// This intentionally uses exactly the same width as the screen area:
-///
-/// ```text
-/// ║  <screen>  ║
-/// ```
-///
-/// but replaces the screen with spaces.
-fn render_blank_row(output: &mut String, screen_row_width: usize) {
-    output.push('║');
-    output.push_str(&" ".repeat(screen_row_width));
-    output.push('║');
-
-    output.push_str(&" ".repeat(PANEL_WIDTH));
-
-    output.push('║');
+fn render_top(output: &mut String, total_width: usize) {
+    output.push_str("\x1b[90m╔");
+    output.push_str(&"═".repeat(total_width));
+    output.push_str("╗\x1b[0m");
 }
 
-/// Wooden side panel.
-///
-/// The panel is always exactly PANEL_WIDTH characters wide.
-fn render_wood_panel(output: &mut String, row: usize) {
-    let pattern = match row % 8 {
-        0 => "──────────",
-        1 => "── ~~~~~ ─",
-        2 => "──────────",
-        3 => "─ ~────~ ─",
-        4 => "──────────",
-        5 => "~~~ ──────",
-        6 => "──────────",
-        _ => "─ ─── ~~~~",
+fn render_brand_row(output: &mut String, screen_row_width: usize) {
+    output.push_str("\x1b[90m║");
+    output.push_str("  ");
+
+    let left = "RETROTERM";
+    let right = "CRT-480";
+
+    let content_width = screen_row_width - 4;
+
+    output.push_str("\x1b[97m");
+    output.push_str(left);
+
+    let remaining = content_width.saturating_sub(left.len() + right.len());
+
+    output.push_str(&" ".repeat(remaining));
+    output.push_str(right);
+
+    output.push_str("\x1b[90m  ║");
+}
+
+fn render_panel_header(output: &mut String) {
+    output.push_str("\x1b[90m  ┌──────────────────┐");
+    output.push_str("║\x1b[0m");
+}
+
+fn render_bezel_top(output: &mut String, screen_row_width: usize) {
+    output.push_str("\x1b[90m║");
+    output.push_str("  ╭");
+    output.push_str(&"─".repeat(screen_row_width - 6));
+    output.push_str("╮  ║");
+}
+
+fn render_panel_separator(output: &mut String) {
+    output.push_str("\x1b[90m  │                  │\x1b[0m");
+}
+
+fn render_bezel_bottom(output: &mut String, screen_row_width: usize) {
+    output.push_str("\x1b[90m║");
+    output.push_str("  ╰");
+    output.push_str(&"─".repeat(screen_row_width - 6));
+    output.push_str("╯  ║");
+}
+
+fn render_panel_bottom(output: &mut String) {
+    output.push_str("\x1b[90m  └──────────────────┘\x1b[0m");
+}
+
+fn render_scanline(output: &mut String, line: &str) {
+    output.push_str("\x1b[2m");
+    output.push_str(line);
+    output.push_str("\x1b[22m");
+}
+
+fn render_controls(output: &mut String, row: usize) {
+    output.push_str("\x1b[90m");
+
+    let line = match row {
+        0 => "  │ \x1b[91m● REC\x1b[90m           │",
+        1 => "  │ \x1b[92m▶ PLAY\x1b[90m         │",
+        2 => "  │                  │",
+        3 => "  │      ◉    ◉      │",
+        4 => "  │     VOL   CH      │",
+        5 => "  │                  │",
+        6 => "  │   ▒▒▒▒▒▒▒▒▒▒▒    │",
+        7 => "  │   ▒▒▒▒▒▒▒▒▒▒▒    │",
+        8 => "  │                  │",
+        _ => "  │                  │",
     };
 
-    let mut chars = pattern.chars();
-
-    for index in 0..PANEL_WIDTH {
-        // Replace an existing character with the dot.
-        if row.is_multiple_of(11) && index == 8 {
-            output.push('●');
-        } else {
-            output.push(chars.next().unwrap_or(' '));
-        }
-    }
-
-    output.push('║');
+    output.push_str(line);
+    output.push_str("\x1b[0m");
 }
 
-/// Repeating old-TV texture used at the bottom of the cabinet.
-///
-/// The function writes exactly `width` terminal characters.
-fn render_texture(output: &mut String, width: usize) {
-    let pattern = ['░', '▒', '▓'];
-    let mut index = 0;
+fn render_bottom_panel(output: &mut String, total_width: usize) {
+    output.push_str("\x1b[90m║");
+    output.push_str("  ");
 
-    for _ in 0..width {
-        output.push(pattern[index]);
-        index = (index + 1) % pattern.len();
+    let speaker_width = total_width.saturating_sub(4);
+
+    for index in 0..speaker_width {
+        let character = match index % 6 {
+            0 | 1 => '·',
+            2 | 3 => '•',
+            _ => ' ',
+        };
+
+        output.push(character);
     }
+
+    output.push_str("  ║\x1b[0m");
 }
 
-/// Calculates the visible terminal width of a line.
-///
-/// ANSI escape sequences are ignored. This is required for the Color and
-/// VHS renderers because their output contains ANSI color control sequences.
+fn render_bottom(output: &mut String, total_width: usize) {
+    output.push_str("\x1b[90m╚");
+    output.push_str(&"═".repeat(total_width));
+    output.push_str("╝\x1b[0m");
+}
+
 fn visible_width(line: &str) -> usize {
     let bytes = line.as_bytes();
     let mut index = 0;
@@ -177,7 +199,6 @@ fn visible_width(line: &str) -> usize {
         if bytes[index] == 0x1b {
             index += 1;
 
-            // CSI sequence: ESC [
             if index < bytes.len() && bytes[index] == b'[' {
                 index += 1;
 
@@ -185,7 +206,6 @@ fn visible_width(line: &str) -> usize {
                     let byte = bytes[index];
                     index += 1;
 
-                    // CSI final byte.
                     if (0x40..=0x7e).contains(&byte) {
                         break;
                     }

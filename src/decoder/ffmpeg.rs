@@ -22,26 +22,13 @@ impl DecoderProfile {
         fps: 15,
     };
 
-    pub const VHS: Self = Self {
-        width: 90,
-        height: 54,
-        fps: 15,
-    };
-
-    /// Normal terminal video mode.
-    ///
-    /// 90x50 provides more visual detail than the previous 80x45 profile
-    /// while remaining small enough for responsive terminal rendering.
     pub const VIDEO: Self = Self {
         width: 90,
         height: 50,
         fps: 15,
     };
 
-    /// Higher-quality terminal video mode.
-    ///
-    /// Uses a larger frame and higher frame rate for clearer output.
-    pub const NORMAL_VIDEO: Self = Self {
+    pub const TRUE_COLOR: Self = Self {
         width: 120,
         height: 68,
         fps: 24,
@@ -95,13 +82,6 @@ impl FfmpegDecoder {
     }
 
     /// Creates a decoder starting at a specific playback position.
-    ///
-    /// The position is expressed in seconds and is intended to align the
-    /// video decoder with the application's shared audio playback timeline.
-    ///
-    /// FFmpeg performs the seek before opening the input so that the decoder
-    /// starts close to the requested position instead of decoding the entire
-    /// source from the beginning.
     pub fn new_at_position(
         source: VideoSource,
         profile: DecoderProfile,
@@ -133,25 +113,17 @@ impl FfmpegDecoder {
 
         let mut process = Command::new("ffmpeg")
             .args([
-                // FFmpeg must never read from the application's terminal.
                 "-nostdin",
-                // Keep FFmpeg quiet during normal playback.
                 "-loglevel",
                 "quiet",
-                // Seek into the input before decoding.
                 "-ss",
                 &position,
-                // Input video source.
                 "-i",
                 &input,
-                // The terminal player only consumes video frames.
                 "-an",
-                // The terminal renderer does not process subtitles.
                 "-sn",
-                // Resize and convert to the renderer's target FPS.
                 "-vf",
                 &filter,
-                // Output raw RGB frames through stdout.
                 "-f",
                 "rawvideo",
                 "-pix_fmt",
@@ -189,10 +161,6 @@ impl FfmpegDecoder {
     }
 
     /// Reads exactly one RGB frame from FFmpeg.
-    ///
-    /// FFmpeg writes raw video as a continuous byte stream, so a single
-    /// read() is not guaranteed to return a complete frame. We therefore
-    /// keep reading until the frame buffer is full.
     pub fn next_frame(&mut self) -> Result<Option<VideoFrame>, String> {
         let frame_size = self.width * self.height * 3;
         let mut pixels = vec![0u8; frame_size];
@@ -211,7 +179,6 @@ impl FfmpegDecoder {
                     .map_err(|error| format!("Failed to wait for FFmpeg: {error}"))?;
 
                 if offset == 0 && status.success() {
-                    // FFmpeg reached the end of the input normally.
                     return Ok(None);
                 }
 
@@ -238,9 +205,6 @@ impl FfmpegDecoder {
 
 impl Drop for FfmpegDecoder {
     fn drop(&mut self) {
-        // std::process::Child does not terminate the OS process when the
-        // Child handle is dropped. Explicitly stop FFmpeg so toggling video
-        // cannot leave orphaned decoder processes behind.
         let _ = self.process.kill();
         let _ = self.process.wait();
     }

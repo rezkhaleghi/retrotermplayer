@@ -3,23 +3,12 @@ use std::path::{Path, PathBuf};
 
 use crate::source::{is_video_file, load_entries, load_entries_with_cancel};
 
-/// Command-line arguments supplied to RetroTermPlayer.
-///
-/// The CLI form remains supported:
-///
-/// ```text
-/// cargo run -- video.mkv 4
-/// ```
 #[derive(Debug)]
 pub struct Input {
     pub source: String,
     pub renderer: usize,
 }
 
-/// Reads input.
-///
-/// If arguments are supplied, the traditional CLI interface is used.
-/// Otherwise the interactive interface is started.
 pub fn read_input() -> io::Result<Input> {
     let mut args = std::env::args().skip(1);
 
@@ -36,57 +25,83 @@ pub fn read_input() -> io::Result<Input> {
              Usage:\n\
              cargo run -- <url-or-file-path> <renderer>\n\n\
              Renderer:\n\
-             0 = ASCII Shading\n\
-             1 = Retro ASCII\n\
-             2 = Retro Color\n\
-             3 = VHS\n\
-             4 = Video\n\
-             5 = Normal Video",
+             1 = ASCII Shading\n\
+             2 = MonoBlock\n\
+             3 = ColorBlock\n\
+             4 = Video + VHS CRT\n\
+             5 = TrueColor",
         )),
 
         (None, _) => interactive_input(),
     }
 }
 
-/// Interactive startup menu.
 fn interactive_input() -> io::Result<Input> {
-    reset_terminal_for_input();
-    clear_screen();
+    loop {
+        reset_terminal_for_input();
+        clear_screen();
 
-    println!("╔══════════════════════════════════════╗");
-    println!("║          RETROTERMPLAYER             ║");
-    println!("╚══════════════════════════════════════╝");
-    println!();
-    println!("1. Online");
-    println!("2. Offline");
-    println!();
+        println!("╔══════════════════════════════════════╗");
+        println!("║          RETROTERMPLAYER             ║");
+        println!("╚══════════════════════════════════════╝");
+        println!();
+        println!("1. Online");
+        println!("2. Offline");
+        println!("0. Exit");
+        println!();
 
-    let mode = prompt("Select: ")?;
+        let mode = prompt("Select: ")?;
 
-    let source = match mode.trim() {
-        "1" => read_online_source()?,
-        "2" => read_offline_source()?,
-        _ => {
-            println!();
-            println!("Please select 1 or 2.");
-            return interactive_input();
-        }
-    };
+        let source = match mode.trim() {
+            "1" => match read_online_source()? {
+                Some(source) => source,
+                None => continue,
+            },
 
-    let renderer = read_renderer()?;
+            "2" => match read_offline_source()? {
+                Some(source) => source,
+                None => continue,
+            },
 
-    Ok(Input { source, renderer })
+            "0" => {
+                return Err(io::Error::new(io::ErrorKind::Interrupted, "Goodbye."));
+            }
+
+            _ => {
+                println!();
+                println!("Please select 0, 1, or 2.");
+                wait_for_enter()?;
+                continue;
+            }
+        };
+
+        let renderer = match read_renderer()? {
+            Some(renderer) => renderer,
+            None => continue,
+        };
+
+        return Ok(Input { source, renderer });
+    }
 }
 
 /// Reads an online video URL.
-fn read_online_source() -> io::Result<String> {
-    println!();
+///
+/// `0` returns to the main menu.
+fn read_online_source() -> io::Result<Option<String>> {
+    clear_screen();
+
     println!("ONLINE");
+    println!();
+    println!("Enter 0 to go back.");
     println!();
 
     loop {
         let url = prompt("Video URL: ")?;
         let url = url.trim();
+
+        if url == "0" {
+            return Ok(None);
+        }
 
         if url.is_empty() {
             println!("URL cannot be empty.");
@@ -94,7 +109,7 @@ fn read_online_source() -> io::Result<String> {
         }
 
         if url.starts_with("http://") || url.starts_with("https://") {
-            return Ok(url.to_string());
+            return Ok(Some(url.to_string()));
         }
 
         println!("Please enter a valid HTTP/HTTPS URL.");
@@ -102,50 +117,63 @@ fn read_online_source() -> io::Result<String> {
 }
 
 /// Reads an offline video using path, browser, or search.
-fn read_offline_source() -> io::Result<String> {
+///
+/// `0` returns to the main menu.
+fn read_offline_source() -> io::Result<Option<String>> {
     loop {
-        println!();
+        clear_screen();
+
         println!("OFFLINE");
         println!();
         println!("1. Enter path");
         println!("2. Browse");
         println!("3. Search");
+        println!("0. Back");
         println!();
 
         let choice = prompt("Select: ")?;
 
         match choice.trim() {
+            "0" => return Ok(None),
+
             "1" => {
                 if let Some(path) = read_path()? {
-                    return Ok(path);
+                    return Ok(Some(path));
                 }
             }
 
             "2" => {
                 if let Some(path) = browse_directory()? {
-                    return Ok(path);
+                    return Ok(Some(path));
                 }
             }
 
             "3" => {
                 if let Some(path) = search_videos()? {
-                    return Ok(path);
+                    return Ok(Some(path));
                 }
             }
 
-            _ => println!("Please select 1, 2, or 3."),
+            _ => {
+                println!("Please select 0, 1, 2, or 3.");
+                wait_for_enter()?;
+            }
         }
     }
 }
 
-/// Reads a direct local path.
+/// Reads a direct local video path.
+///
+/// `0` returns to the offline menu.
 fn read_path() -> io::Result<Option<String>> {
+    println!();
+    println!("Enter 0 to go back.");
     println!();
 
     let input = prompt("Video path: ")?;
     let input = input.trim();
 
-    if input.is_empty() {
+    if input == "0" || input.is_empty() {
         return Ok(None);
     }
 
@@ -172,7 +200,7 @@ fn read_path() -> io::Result<Option<String>> {
 
 /// Simple directory browser.
 ///
-/// The browser starts in the current working directory.
+/// `0` always means Back.
 fn browse_directory() -> io::Result<Option<String>> {
     let mut current = std::env::current_dir()?;
 
@@ -193,27 +221,7 @@ fn browse_directory() -> io::Result<Option<String>> {
             }
         };
 
-        if entries.is_empty() {
-            println!("No video files or directories found.");
-            println!();
-            println!("0. ..");
-            println!("q. Cancel");
-            println!();
-
-            let input = prompt("Select: ")?;
-
-            if input.trim().eq_ignore_ascii_case("q") {
-                return Ok(None);
-            }
-
-            if input.trim() == "0" && !go_parent(&mut current) {
-                return Ok(None);
-            }
-
-            continue;
-        }
-
-        println!("0. ..");
+        println!("0. Back");
 
         for (index, path) in entries.iter().enumerate() {
             let name = path
@@ -229,32 +237,21 @@ fn browse_directory() -> io::Result<Option<String>> {
         }
 
         println!();
-        println!("q. Cancel");
-        println!();
 
         let input = prompt("Select: ")?;
 
-        if input.trim().eq_ignore_ascii_case("q") {
+        if input.trim() == "0" {
             return Ok(None);
         }
 
         let selection = match input.trim().parse::<usize>() {
-            Ok(value) => value,
-            Err(_) => {
+            Ok(value) if value > 0 => value,
+            _ => {
                 println!("Invalid selection.");
                 wait_for_enter()?;
                 continue;
             }
         };
-
-        if selection == 0 {
-            if !go_parent(&mut current) {
-                println!("Already at the filesystem root.");
-                wait_for_enter()?;
-            }
-
-            continue;
-        }
 
         let Some(path) = entries.get(selection - 1) else {
             println!("Invalid selection.");
@@ -272,14 +269,19 @@ fn browse_directory() -> io::Result<Option<String>> {
 }
 
 /// Recursively searches from the current directory.
+///
+/// `0` returns to the offline menu.
 fn search_videos() -> io::Result<Option<String>> {
     let current = std::env::current_dir()?;
 
     println!();
+    println!("Enter 0 to go back.");
+    println!();
+
     let query = prompt("Search: ")?;
     let query = query.trim();
 
-    if query.is_empty() {
+    if query.is_empty() || query == "0" {
         return Ok(None);
     }
 
@@ -295,6 +297,8 @@ fn search_videos() -> io::Result<Option<String>> {
         return Ok(None);
     }
 
+    println!("0. Back");
+
     for (index, path) in entries.iter().enumerate() {
         println!(
             "{:>2}. {}",
@@ -304,13 +308,11 @@ fn search_videos() -> io::Result<Option<String>> {
     }
 
     println!();
-    println!("q. Cancel");
-    println!();
 
     loop {
         let input = prompt("Select: ")?;
 
-        if input.trim().eq_ignore_ascii_case("q") {
+        if input.trim() == "0" {
             return Ok(None);
         }
 
@@ -332,24 +334,31 @@ fn search_videos() -> io::Result<Option<String>> {
 }
 
 /// Renderer selection shared by interactive and CLI modes.
-fn read_renderer() -> io::Result<usize> {
-    println!();
+///
+/// `0` returns to the main menu.
+fn read_renderer() -> io::Result<Option<usize>> {
+    clear_screen();
+
     println!("SELECT RENDER MODE");
     println!();
-    println!("0. ASCII Shading");
-    println!("1. Retro ASCII");
-    println!("2. Retro Color");
-    println!("3. VHS");
-    println!("4. Video");
-    println!("5. Normal Video");
+    println!("1. ASCII Shading");
+    println!("2. MonoBlock");
+    println!("3. ColorBlock");
+    println!("4. Video + VHS CRT");
+    println!("5. TrueColor");
+    println!("0. Back");
     println!();
 
     loop {
         let input = prompt("Select: ")?;
 
+        if input.trim() == "0" {
+            return Ok(None);
+        }
+
         match parse_renderer(input.trim()) {
-            Ok(renderer) => return Ok(renderer),
-            Err(_) => println!("Please select a renderer from 0 to 5."),
+            Ok(renderer) => return Ok(Some(renderer)),
+            Err(_) => println!("Please select a renderer from 1 to 5."),
         }
     }
 }
@@ -358,14 +367,14 @@ fn parse_renderer(value: &str) -> io::Result<usize> {
     let renderer = value.parse::<usize>().map_err(|_| {
         io::Error::new(
             io::ErrorKind::InvalidInput,
-            "Renderer must be a number from 0 to 5.",
+            "Renderer must be a number from 1 to 5.",
         )
     })?;
 
-    if renderer > 5 {
+    if !(1..=5).contains(&renderer) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "Renderer must be a number from 0 to 5.",
+            "Renderer must be a number from 1 to 5.",
         ));
     }
 
@@ -387,39 +396,19 @@ fn wait_for_enter() -> io::Result<()> {
     Ok(())
 }
 
-/// Restores terminal output behavior before showing the interactive UI.
-///
-/// Playback uses the alternate screen, hides the cursor, and disables
-/// automatic line wrapping. Restore those modes before printing the UI.
 fn reset_terminal_for_input() {
     print!("\x1b[?1049l\x1b[?25h\x1b[?7h\x1b[0m");
     let _ = io::stdout().flush();
 }
 
-/// Clears the terminal screen.
 fn clear_screen() {
     print!("\x1b[2J\x1b[H");
     let _ = io::stdout().flush();
 }
 
-/// Expands common shell-style home-directory forms.
-///
-/// Interactive input does not go through the shell, so `$HOME` must be
-/// expanded by the application itself.
-///
-/// Supported:
-///
-/// ```text
-/// ~
-/// ~/Downloads/video.mkv
-/// $HOME/Downloads/video.mkv
-/// "$HOME/Downloads/video.mkv"
-/// "~/Downloads/video.mkv"
-/// ```
 fn expand_path(input: &str) -> String {
     let input = input.trim();
 
-    // Allow paths copied with surrounding single or double quotes.
     let input = input
         .strip_prefix('"')
         .and_then(|value| value.strip_suffix('"'))
