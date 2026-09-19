@@ -5,6 +5,10 @@ use crate::decoder::VideoFrame;
 
 use super::Renderer;
 
+const LUT_SIZE: usize = 32;
+const LUT_ENTRIES: usize =
+    LUT_SIZE * LUT_SIZE * LUT_SIZE;
+
 /// Normal-quality color terminal video renderer.
 ///
 /// Each terminal cell represents two vertical pixels:
@@ -14,13 +18,18 @@ use super::Renderer;
 /// bottom pixel -> background color
 /// ```
 ///
-/// ANSI 256-color output is used because it provides much better
-/// compatibility and bandwidth characteristics than truecolor.
-pub struct VideoRenderer;
+/// The renderer targets ANSI 256-color terminals. A perceptual palette
+/// lookup table is built once during initialization so palette selection
+/// remains cheap during playback.
+pub struct VideoRenderer {
+    palette_lut: Vec<u8>,
+}
 
 impl VideoRenderer {
     pub fn new() -> Self {
-        Self
+        Self {
+            palette_lut: build_palette_lut(),
+        }
     }
 }
 
@@ -57,36 +66,32 @@ impl Renderer for VideoRenderer {
             let mut current_background: Option<u8> = None;
 
             for x in 0..frame.width {
-                let top_index =
-                    top_row_start + x * 3;
+                let top =
+                    sample_pixel(
+                        frame,
+                        top_row_start,
+                        x,
+                    );
 
-                let top = (
-                    frame.pixels[top_index],
-                    frame.pixels[top_index + 1],
-                    frame.pixels[top_index + 2],
-                );
-
-                let bottom = if bottom_exists {
-                    let bottom_index =
-                        bottom_row_start + x * 3;
-
-                    (
-                        frame.pixels[bottom_index],
-                        frame.pixels[bottom_index + 1],
-                        frame.pixels[bottom_index + 2],
-                    )
-                } else {
-                    (0, 0, 0)
-                };
-
-                let top_dither =
-                    bayer_dither(x, y);
-
-                let bottom_dither =
-                    bayer_dither(x, y + 1);
+                let bottom =
+                    if bottom_exists {
+                        sample_pixel(
+                            frame,
+                            bottom_row_start,
+                            x,
+                        )
+                    } else {
+                        (0, 0, 0)
+                    };
 
                 let top =
-                    enhance_pixel(frame, x, y, top, top_dither);
+                    enhance_pixel(
+                        frame,
+                        x,
+                        y,
+                        top,
+                        bayer_dither(x, y),
+                    );
 
                 let bottom =
                     if bottom_exists {
@@ -95,21 +100,23 @@ impl Renderer for VideoRenderer {
                             x,
                             y + 1,
                             bottom,
-                            bottom_dither,
+                            bayer_dither(x, y + 1),
                         )
                     } else {
                         (0, 0, 0)
                     };
 
                 let foreground =
-                    rgb_to_ansi256(
+                    lookup_palette(
+                        &self.palette_lut,
                         top.0,
                         top.1,
                         top.2,
                     );
 
                 let background =
-                    rgb_to_ansi256(
+                    lookup_palette(
+                        &self.palette_lut,
                         bottom.0,
                         bottom.1,
                         bottom.2,
@@ -149,11 +156,26 @@ impl Renderer for VideoRenderer {
     }
 }
 
-/// Performs a small amount of local image enhancement.
+fn sample_pixel(
+    frame: &VideoFrame,
+    row_start: usize,
+    x: usize,
+) -> (u8, u8, u8) {
+    let index =
+        row_start + x * 3;
+
+    (
+        frame.pixels[index],
+        frame.pixels[index + 1],
+        frame.pixels[index + 2],
+    )
+}
+
+/// Mild image enhancement performed after FFmpeg scaling.
 ///
-/// FFmpeg already performs the primary scaling/sharpening. This pass is
-/// intentionally subtle and exists mainly to recover some edge definition
-/// lost when converting the RGB image into ANSI terminal colors.
+/// The important part here is that we sharpen luminance rather than
+/// independently sharpening RGB channels. This prevents colored halos
+/// around edges.
 fn enhance_pixel(
     frame: &VideoFrame,
     x: usize,
@@ -164,11 +186,19 @@ fn enhance_pixel(
     let width = frame.width;
     let height = frame.height;
 
-    let center_luma =
-        luminance(pixel.0, pixel.1, pixel.2);
+    let center =
+        luminance(
+            pixel.0,
+            pixel.1,
+            pixel.2,
+        );
 
     let left =
-        sample_luminance(frame, x.saturating_sub(1), y);
+        sample_luminance(
+            frame,
+            x.saturating_sub(1),
+            y,
+        );
 
     let right =
         sample_luminance(
@@ -178,7 +208,11 @@ fn enhance_pixel(
         );
 
     let top =
-        sample_luminance(frame, x, y.saturating_sub(1));
+        sample_luminance(
+            frame,
+            x,
+            y.saturating_sub(1),
+        );
 
     let bottom =
         sample_luminance(
@@ -191,40 +225,40 @@ fn enhance_pixel(
         (left + right + top + bottom) * 0.25;
 
     let detail =
-        center_luma - local_average;
+        center - local_average;
 
-    // Very subtle unsharp masking.
-    //
-    // Stronger sharpening looks worse at terminal resolution because
-    // ANSI palette boundaries already create hard edges.
-    let sharpened_luma =
-        (center_luma + detail * 0.18)
+    // Very restrained unsharp mask.
+    let enhanced_luminance =
+        (center + detail * 0.16)
             .clamp(0.0, 1.0);
 
-    let ratio =
-        if center_luma > 0.001 {
-            sharpened_luma / center_luma
+    let luminance_ratio =
+        if center > 0.002 {
+            enhanced_luminance / center
         } else {
             1.0
         };
 
     let mut r =
-        (pixel.0 as f32 * ratio).clamp(0.0, 255.0);
+        pixel.0 as f32 * luminance_ratio;
 
     let mut g =
-        (pixel.1 as f32 * ratio).clamp(0.0, 255.0);
+        pixel.1 as f32 * luminance_ratio;
 
     let mut b =
-        (pixel.2 as f32 * ratio).clamp(0.0, 255.0);
+        pixel.2 as f32 * luminance_ratio;
 
-    // Gentle contrast expansion around the midpoint.
-    //
-    // This is deliberately much softer than the previous 1.06 multiplier.
-    r = apply_contrast(r, 1.035);
-    g = apply_contrast(g, 1.035);
-    b = apply_contrast(b, 1.035);
+    // Preserve shadow detail without washing out blacks.
+    r = shadow_highlight_curve(r);
+    g = shadow_highlight_curve(g);
+    b = shadow_highlight_curve(b);
 
-    // Tiny ordered dither before palette quantization.
+    // Very subtle contrast expansion.
+    r = contrast(r, 1.025);
+    g = contrast(g, 1.025);
+    b = contrast(b, 1.025);
+
+    // Ordered dithering happens before palette quantization.
     r += dither as f32;
     g += dither as f32;
     b += dither as f32;
@@ -236,11 +270,30 @@ fn enhance_pixel(
     )
 }
 
-fn apply_contrast(
+/// A gentle S-curve which protects both very dark and very bright regions.
+fn shadow_highlight_curve(
     value: f32,
-    contrast: f32,
 ) -> f32 {
-    ((value - 128.0) * contrast + 128.0)
+    let normalized =
+        (value / 255.0).clamp(0.0, 1.0);
+
+    // Smoothstep-like curve centered around 0.5.
+    let curved =
+        normalized * normalized
+            * (3.0 - 2.0 * normalized);
+
+    // Keep the original image dominant.
+    let result =
+        normalized * 0.78 + curved * 0.22;
+
+    result * 255.0
+}
+
+fn contrast(
+    value: f32,
+    amount: f32,
+) -> f32 {
+    ((value - 128.0) * amount + 128.0)
         .clamp(0.0, 255.0)
 }
 
@@ -252,11 +305,11 @@ fn sample_luminance(
     let index =
         (y * frame.width + x) * 3;
 
-    let r = frame.pixels[index];
-    let g = frame.pixels[index + 1];
-    let b = frame.pixels[index + 2];
-
-    luminance(r, g, b)
+    luminance(
+        frame.pixels[index],
+        frame.pixels[index + 1],
+        frame.pixels[index + 2],
+    )
 }
 
 fn luminance(
@@ -271,109 +324,106 @@ fn luminance(
     ) / 255.0
 }
 
-/// 2x2 ordered dither.
+/// 4x4 Bayer ordered dithering.
 ///
-/// The amplitude is intentionally small because ANSI 256 already
-/// introduces quantization. Larger dithering produces visible noise.
+/// The amplitude is intentionally tiny. Its job is to distribute
+/// palette quantization error rather than create visible noise.
 fn bayer_dither(
     x: usize,
     y: usize,
 ) -> i16 {
-    const MATRIX: [[i16; 2]; 2] = [
-        [-2, 1],
-        [2, -1],
+    const MATRIX: [[i16; 4]; 4] = [
+        [-2, 0, -1, 1],
+        [2, -1, 1, 0],
+        [-1, 1, 0, 2],
+        [1, 0, 2, -1],
     ];
 
-    MATRIX[y & 1][x & 1]
+    MATRIX[y & 3][x & 3]
 }
 
-/// Converts RGB to the closest practical ANSI-256 color.
-///
-/// ANSI 256 contains:
-///
-/// - 16 standard colors
-/// - 216 RGB cube colors
-/// - 24 grayscale colors
-///
-/// We use the RGB cube plus grayscale ramp and choose based on
-/// perceptual channel weighting rather than independently rounding
-/// each RGB channel.
-fn rgb_to_ansi256(
+/// Converts 8-bit RGB into the 32^3 lookup table.
+fn lookup_palette(
+    lut: &[u8],
     r: u8,
     g: u8,
     b: u8,
 ) -> u8 {
-    let gray_distance =
-        grayscale_distance(r, g, b);
+    let r = r as usize * (LUT_SIZE - 1) / 255;
+    let g = g as usize * (LUT_SIZE - 1) / 255;
+    let b = b as usize * (LUT_SIZE - 1) / 255;
 
-    let cube_distance =
-        color_cube_distance(r, g, b);
+    let index =
+        (r * LUT_SIZE * LUT_SIZE)
+        + (g * LUT_SIZE)
+        + b;
 
-    if gray_distance <= cube_distance {
-        return grayscale_to_ansi(
-            luminance_byte(r, g, b),
-        );
+    lut[index]
+}
+
+/// Builds the complete RGB -> ANSI-256 mapping once.
+///
+/// 32^3 = 32,768 entries, so playback only needs three integer
+/// operations and one array lookup for every pixel.
+fn build_palette_lut() -> Vec<u8> {
+    let mut lut =
+        vec![0u8; LUT_ENTRIES];
+
+    for r in 0..LUT_SIZE {
+        for g in 0..LUT_SIZE {
+            for b in 0..LUT_SIZE {
+                let red =
+                    (r * 255 / (LUT_SIZE - 1))
+                        as u8;
+
+                let green =
+                    (g * 255 / (LUT_SIZE - 1))
+                        as u8;
+
+                let blue =
+                    (b * 255 / (LUT_SIZE - 1))
+                        as u8;
+
+                let index =
+                    (r * LUT_SIZE * LUT_SIZE)
+                    + (g * LUT_SIZE)
+                    + b;
+
+                lut[index] =
+                    nearest_ansi_color(
+                        red,
+                        green,
+                        blue,
+                    );
+            }
+        }
     }
 
-    nearest_cube_color(r, g, b)
+    lut
 }
 
-fn nearest_cube_color(
+/// Finds the closest ANSI-256 color.
+///
+/// All 256 ANSI colors are considered during initialization, not
+/// during playback. This gives substantially better palette choices
+/// than independently rounding RGB channels.
+fn nearest_ansi_color(
     r: u8,
     g: u8,
     b: u8,
 ) -> u8 {
-    let rf = r as f32;
-    let gf = g as f32;
-    let bf = b as f32;
-
-    let r_position =
-        rf / 255.0 * 5.0;
-
-    let g_position =
-        gf / 255.0 * 5.0;
-
-    let b_position =
-        bf / 255.0 * 5.0;
-
-    let r0 =
-        r_position.floor() as u8;
-
-    let g0 =
-        g_position.floor() as u8;
-
-    let b0 =
-        b_position.floor() as u8;
-
-    let r1 =
-        r0.saturating_add(1).min(5);
-
-    let g1 =
-        g0.saturating_add(1).min(5);
-
-    let b1 =
-        b0.saturating_add(1).min(5);
-
-    let candidates = [
-        (r0, g0, b0),
-        (r1, g0, b0),
-        (r0, g1, b0),
-        (r0, g0, b1),
-        (r1, g1, b0),
-        (r1, g0, b1),
-        (r0, g1, b1),
-        (r1, g1, b1),
-    ];
-
-    let mut best_index = 0;
+    let mut best_color = 0;
     let mut best_distance = f32::MAX;
 
-    for &(cr, cg, cb) in &candidates {
+    for color in 0u16..=255 {
+        let color =
+            color as u8;
+
         let (pr, pg, pb) =
-            ansi_cube_rgb(cr, cg, cb);
+            ansi256_rgb(color);
 
         let distance =
-            color_distance(
+            perceptual_color_distance(
                 r,
                 g,
                 b,
@@ -384,59 +434,19 @@ fn nearest_cube_color(
 
         if distance < best_distance {
             best_distance = distance;
-            best_index =
-                16 + 36 * cr + 6 * cg + cb;
+            best_color = color;
         }
     }
 
-    best_index
+    best_color
 }
 
-fn color_cube_distance(
-    r: u8,
-    g: u8,
-    b: u8,
-) -> f32 {
-    let cube = nearest_cube_color(r, g, b);
-
-    let (cr, cg, cb) =
-        ansi256_rgb(cube);
-
-    color_distance(
-        r,
-        g,
-        b,
-        cr,
-        cg,
-        cb,
-    )
-}
-
-fn grayscale_distance(
-    r: u8,
-    g: u8,
-    b: u8,
-) -> f32 {
-    let gray =
-        luminance_byte(r, g, b);
-
-    let ansi =
-        grayscale_to_ansi(gray);
-
-    let (gr, gg, gb) =
-        ansi256_rgb(ansi);
-
-    color_distance(
-        r,
-        g,
-        b,
-        gr,
-        gg,
-        gb,
-    )
-}
-
-fn color_distance(
+/// Weighted Y/Cb/Cr-like distance.
+///
+/// Luminance gets the highest weight because terminal imagery is
+/// especially sensitive to brightness errors. Chroma remains important
+/// enough to keep saturated colors from collapsing toward gray.
+fn perceptual_color_distance(
     r1: u8,
     g1: u8,
     b1: u8,
@@ -444,54 +454,52 @@ fn color_distance(
     g2: u8,
     b2: u8,
 ) -> f32 {
-    let dr =
-        r1 as f32 - r2 as f32;
+    let y1 =
+        0.2126 * r1 as f32
+        + 0.7152 * g1 as f32
+        + 0.0722 * b1 as f32;
 
-    let dg =
-        g1 as f32 - g2 as f32;
+    let y2 =
+        0.2126 * r2 as f32
+        + 0.7152 * g2 as f32
+        + 0.0722 * b2 as f32;
 
-    let db =
-        b1 as f32 - b2 as f32;
+    let cb1 =
+        b1 as f32 - y1;
 
-    // Green contributes more strongly to perceived brightness,
-    // while blue contributes less.
-    //
-    // The small red/blue compensation prevents saturated colors
-    // from being pulled too aggressively toward gray.
-    dr * dr * 0.30 +
-    dg * dg * 0.59 +
-    db * db * 0.11
-}
+    let cb2 =
+        b2 as f32 - y2;
 
-fn ansi_cube_rgb(
-    r: u8,
-    g: u8,
-    b: u8,
-) -> (u8, u8, u8) {
-    (
-        cube_level(r),
-        cube_level(g),
-        cube_level(b),
-    )
-}
+    let cr1 =
+        r1 as f32 - y1;
 
-fn cube_level(
-    value: u8,
-) -> u8 {
-    if value == 0 {
-        0
-    } else {
-        55 + value * 40
-    }
+    let cr2 =
+        r2 as f32 - y2;
+
+    let dy =
+        y1 - y2;
+
+    let dcb =
+        cb1 - cb2;
+
+    let dcr =
+        cr1 - cr2;
+
+    dy * dy * 1.35
+        + dcb * dcb * 0.85
+        + dcr * dcr * 0.85
 }
 
 fn ansi256_rgb(
-    value: u8,
+    color: u8,
 ) -> (u8, u8, u8) {
-    match value {
+    match color {
+        0..=15 =>
+            ansi_standard_rgb(color),
+
         16..=231 => {
             let index =
-                value - 16;
+                color - 16;
 
             let r =
                 index / 36;
@@ -511,52 +519,52 @@ fn ansi256_rgb(
 
         232..=255 => {
             let gray =
-                8 + (value - 232) * 10;
+                8 + (color - 232) * 10;
 
             (gray, gray, gray)
         }
-
-        _ => (0, 0, 0),
     }
+}
+
+fn ansi_standard_rgb(
+    color: u8,
+) -> (u8, u8, u8) {
+    // Standard ANSI colors.
+    //
+    // These values intentionally use the conventional xterm palette
+    // rather than assuming that every terminal has identical RGB values.
+    const COLORS: [(u8, u8, u8); 16] = [
+        (0, 0, 0),
+        (205, 0, 0),
+        (0, 205, 0),
+        (205, 205, 0),
+        (0, 0, 238),
+        (205, 0, 205),
+        (0, 205, 205),
+        (229, 229, 229),
+        (127, 127, 127),
+        (255, 0, 0),
+        (0, 255, 0),
+        (255, 255, 0),
+        (92, 92, 255),
+        (255, 0, 255),
+        (0, 255, 255),
+        (255, 255, 255),
+    ];
+
+    COLORS[color as usize]
 }
 
 fn cube_component(
     value: u8,
 ) -> u8 {
-    if value == 0 {
-        0
-    } else {
-        55 + value * 40
+    match value {
+        0 => 0,
+        1 => 95,
+        2 => 135,
+        3 => 175,
+        4 => 215,
+        _ => 255,
     }
-}
-
-fn luminance_byte(
-    r: u8,
-    g: u8,
-    b: u8,
-) -> u8 {
-    (
-        0.2126 * r as f32 +
-        0.7152 * g as f32 +
-        0.0722 * b as f32
-    )
-    .round()
-    .clamp(0.0, 255.0) as u8
-}
-
-fn grayscale_to_ansi(
-    value: u8,
-) -> u8 {
-    if value < 8 {
-        return 16;
-    }
-
-    if value > 248 {
-        return 231;
-    }
-
-    232 + (
-        (value as u16 - 8) * 23 / 240
-    ) as u8
 }
 
