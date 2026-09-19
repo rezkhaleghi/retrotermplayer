@@ -23,14 +23,14 @@ impl DecoderProfile {
     };
 
     pub const VIDEO: Self = Self {
-        width: 90,
-        height: 50,
+        width: 100,
+        height: 60,
         fps: 15,
     };
 
     pub const TRUE_COLOR: Self = Self {
         width: 100,
-        height: 50,
+        height: 60,
         fps: 15,
     };
 }
