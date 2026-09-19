@@ -29,9 +29,9 @@ impl DecoderProfile {
     };
 
     pub const TRUE_COLOR: Self = Self {
-        width: 120,
-        height: 68,
-        fps: 24,
+        width: 100,
+        height: 50,
+        fps: 15,
     };
 }
 
@@ -103,9 +103,9 @@ impl FfmpegDecoder {
         let input = source.resolve_for_ffmpeg(quality)?;
 
         let filter = format!(
-            "scale={}:{}:force_original_aspect_ratio=decrease,\
-             pad={}:{}:(ow-iw)/2:(oh-ih)/2,\
-             fps={}",
+            "scale={}:{}:flags=lanczos:force_original_aspect_ratio=decrease,\
+     pad={}:{}:(ow-iw)/2:(oh-ih)/2,\
+     fps={}",
             profile.width, profile.height, profile.width, profile.height, profile.fps
         );
 

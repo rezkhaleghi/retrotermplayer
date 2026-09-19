@@ -118,18 +118,13 @@ fn render_brand_row(output: &mut String, screen_row_width: usize) {
     output.push_str("\x1b[97m");
     output.push_str(left);
 
-    let remaining = content_width.saturating_sub(
-        2 + left.len() + right.len() + 2,
-    );
+    let remaining = content_width.saturating_sub(2 + left.len() + right.len() + 2);
 
     output.push_str(&" ".repeat(remaining));
     output.push_str(right);
 
     output.push_str("\x1b[90m  ║\x1b[0m");
 }
-
-
-
 
 fn render_panel_header(output: &mut String) {
     // Exactly PANEL_WIDTH cells:
@@ -170,7 +165,6 @@ fn render_scanline(output: &mut String, line: &str) {
     output.push_str("\x1b[22m");
 }
 
-
 fn render_controls(output: &mut String, row: usize) {
     output.push_str("\x1b[90m");
 
@@ -197,12 +191,9 @@ fn render_controls(output: &mut String, row: usize) {
     let content_width = PANEL_CONTENT_WIDTH - 1;
     let visible = visible_width(content);
 
-    let left_padding = content_width
-        .saturating_sub(visible)
-        / 2;
+    let left_padding = content_width.saturating_sub(visible) / 2;
 
-    let right_padding = content_width
-        .saturating_sub(visible + left_padding);
+    let right_padding = content_width.saturating_sub(visible + left_padding);
 
     output.push_str(&" ".repeat(left_padding));
 
@@ -224,8 +215,6 @@ fn render_controls(output: &mut String, row: usize) {
     output.push_str("│║");
     output.push_str("\x1b[0m");
 }
-
-
 
 fn render_bottom_panel(output: &mut String, total_width: usize) {
     output.push_str("\x1b[90m║");
@@ -284,10 +273,7 @@ fn visible_width(line: &str) -> usize {
             continue;
         }
 
-        let character = line[index..]
-            .chars()
-            .next()
-            .expect("valid UTF-8 character");
+        let character = line[index..].chars().next().expect("valid UTF-8 character");
 
         width += 1;
         index += character.len_utf8();
