@@ -33,6 +33,12 @@ impl DecoderProfile {
         height: 60,
         fps: 15,
     };
+
+    pub const MONO_VIDEO: Self = Self {
+    width: 200,
+    height: 120,
+    fps: 15,
+};
 }
 
 /// A decoded RGB video frame.
