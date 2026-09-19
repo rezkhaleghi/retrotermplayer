@@ -1,5 +1,5 @@
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::source::{is_video_file, load_entries, load_entries_with_cancel};
 
@@ -15,7 +15,6 @@ pub fn read_input() -> io::Result<Input> {
     match (args.next(), args.next()) {
         (Some(source), Some(renderer)) => {
             let renderer = parse_renderer(&renderer)?;
-
             Ok(Input { source, renderer })
         }
 
@@ -198,9 +197,10 @@ fn read_path() -> io::Result<Option<String>> {
     Ok(Some(expanded))
 }
 
-/// Simple directory browser.
+/// Directory browser.
 ///
-/// `0` always means Back.
+/// `0` returns to the offline menu.
+/// Selecting `..` navigates to the parent directory.
 fn browse_directory() -> io::Result<Option<String>> {
     let mut current = std::env::current_dir()?;
 
@@ -223,6 +223,14 @@ fn browse_directory() -> io::Result<Option<String>> {
 
         println!("0. Back");
 
+        let parent = current.parent().map(PathBuf::from);
+
+        if parent.is_some() {
+            println!("1. ..");
+        }
+
+        let entry_offset = if parent.is_some() { 2 } else { 1 };
+
         for (index, path) in entries.iter().enumerate() {
             let name = path
                 .file_name()
@@ -230,9 +238,9 @@ fn browse_directory() -> io::Result<Option<String>> {
                 .unwrap_or("?");
 
             if path.is_dir() {
-                println!("{:>2}. {}/", index + 1, name);
+                println!("{:>2}. {}/", index + entry_offset, name);
             } else {
-                println!("{:>2}. {}", index + 1, name);
+                println!("{:>2}. {}", index + entry_offset, name);
             }
         }
 
@@ -240,20 +248,33 @@ fn browse_directory() -> io::Result<Option<String>> {
 
         let input = prompt("Select: ")?;
 
-        if input.trim() == "0" {
-            return Ok(None);
-        }
-
         let selection = match input.trim().parse::<usize>() {
-            Ok(value) if value > 0 => value,
-            _ => {
+            Ok(value) => value,
+            Err(_) => {
                 println!("Invalid selection.");
                 wait_for_enter()?;
                 continue;
             }
         };
 
-        let Some(path) = entries.get(selection - 1) else {
+        if selection == 0 {
+            return Ok(None);
+        }
+
+        if selection == 1 {
+            if let Some(parent) = parent {
+                current = parent;
+                continue;
+            }
+
+            println!("Invalid selection.");
+            wait_for_enter()?;
+            continue;
+        }
+
+        let entry_index = selection - entry_offset;
+
+        let Some(path) = entries.get(entry_index) else {
             println!("Invalid selection.");
             wait_for_enter()?;
             continue;
@@ -434,17 +455,4 @@ fn expand_path(input: &str) -> String {
     }
 
     input.to_string()
-}
-
-fn go_parent(path: &mut PathBuf) -> bool {
-    let parent = Path::new(path).parent().map(Path::to_path_buf);
-
-    if let Some(parent) = parent {
-        if parent != *path {
-            *path = parent;
-            return true;
-        }
-    }
-
-    false
 }
