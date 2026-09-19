@@ -112,6 +112,7 @@ fn render_brand_row(output: &mut String, screen_row_width: usize) {
     let left = "RETROTERM";
     let right = "CRT-480";
 
+    // Content between the outer left/right borders.
     let content_width = screen_row_width - 4;
 
     output.push_str("\x1b[97m");
@@ -122,9 +123,8 @@ fn render_brand_row(output: &mut String, screen_row_width: usize) {
     output.push_str(&" ".repeat(remaining));
     output.push_str(right);
 
-    output.push_str("\x1b[90m  ║");
+    output.push_str("\x1b[90m  ║\x1b[0m");
 }
-
 fn render_panel_header(output: &mut String) {
     // Exactly PANEL_WIDTH cells:
     //
