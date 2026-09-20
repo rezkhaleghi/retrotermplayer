@@ -1,72 +1,185 @@
+use std::fs::OpenOptions;
+use std::io::{self, Read};
+use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::{decoder::FfmpegDecoder, renderer::Renderer, terminal::Terminal};
 
-/// Coordinates decoding, rendering, and terminal output.
-///
-/// The player owns one reusable output buffer. Renderers write directly into
-/// that buffer instead of allocating a new String for every frame.
+struct RawMode {
+    original_settings: String,
+}
+
+impl RawMode {
+    fn enter() -> Result<Self, String> {
+        let output = Command::new("stty")
+            .args(["-g"])
+            .stdin(
+                OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open("/dev/tty")
+                    .map_err(|error| format!("Failed to open terminal: {error}"))?,
+            )
+            .output()
+            .map_err(|error| format!("Failed to read terminal settings: {error}"))?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "Failed to read terminal settings: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+
+        let original_settings = String::from_utf8(output.stdout)
+            .map_err(|error| format!("Invalid terminal settings: {error}"))?
+            .trim()
+            .to_string();
+
+        let tty = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/tty")
+            .map_err(|error| format!("Failed to open terminal: {error}"))?;
+
+        let status = Command::new("stty")
+            .args(["-icanon", "-echo", "min", "0", "time", "0"])
+            .stdin(tty)
+            .status()
+            .map_err(|error| format!("Failed to configure keyboard input: {error}"))?;
+
+        if !status.success() {
+            return Err("Failed to configure terminal keyboard input.".to_string());
+        }
+
+        Ok(Self { original_settings })
+    }
+}
+
+impl Drop for RawMode {
+    fn drop(&mut self) {
+        if let Ok(tty) = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/tty")
+        {
+            let _ = Command::new("stty")
+                .arg(&self.original_settings)
+                .stdin(tty)
+                .status();
+        }
+    }
+}
+
+struct Keyboard {
+    tty: std::fs::File,
+}
+
+impl Keyboard {
+    fn new() -> Result<Self, String> {
+        let tty = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/tty")
+            .map_err(|error| format!("Failed to open terminal keyboard: {error}"))?;
+
+        Ok(Self { tty })
+    }
+
+    fn read_input(&mut self) -> Option<Input> {
+        let mut buffer = [0u8; 8];
+
+        let bytes_read = self.tty.read(&mut buffer).ok()?;
+
+        if bytes_read == 0 {
+            return None;
+        }
+
+        match buffer[0] {
+            b'q' | b'Q' => Some(Input::Quit),
+
+            b' ' => Some(Input::Pause),
+
+            // Left arrow: ESC [ D
+            0x1b if bytes_read >= 3 && buffer[1] == b'[' && buffer[2] == b'D' => {
+                Some(Input::SeekBackward)
+            }
+
+            // Right arrow: ESC [ C
+            0x1b if bytes_read >= 3 && buffer[1] == b'[' && buffer[2] == b'C' => {
+                Some(Input::SeekForward)
+            }
+
+            // Plain ESC.
+            0x1b => Some(Input::Quit),
+
+            _ => None,
+        }
+    }
+}
+
+enum Input {
+    Quit,
+    Pause,
+    SeekBackward,
+    SeekForward,
+}
+
 pub struct Player {
     decoder: FfmpegDecoder,
     renderer: Box<dyn Renderer>,
     terminal: Terminal,
     output: String,
+
+    position: f64,
+    duration: Option<f64>,
+    paused: bool,
 }
 
 impl Player {
-    pub fn new(decoder: FfmpegDecoder, renderer: Box<dyn Renderer>, terminal: Terminal) -> Self {
+    pub fn new(
+        decoder: FfmpegDecoder,
+        renderer: Box<dyn Renderer>,
+        terminal: Terminal,
+        duration: Option<f64>,
+    ) -> Self {
         Self {
             decoder,
             renderer,
             terminal,
-
-            // Start with an empty buffer. The first rendered frame allocates
-            // enough memory for its output, and that allocation is then
-            // reused for the remainder of playback.
             output: String::new(),
+            position: 0.0,
+            duration,
+            paused: false,
         }
     }
 
     pub fn play(&mut self) -> Result<(), String> {
-        // FFmpeg produces frames at the FPS configured by DecoderProfile.
-        let frame_duration = Duration::from_secs_f64(1.0 / self.decoder.fps() as f64);
-
         self.terminal
             .enter()
             .map_err(|error| format!("Failed to enter terminal mode: {error}"))?;
 
-        let playback_result = (|| -> Result<(), String> {
-            loop {
-                let frame_start = Instant::now();
-
-                let frame = match self.decoder.next_frame()? {
-                    Some(frame) => frame,
-                    None => break,
-                };
-
-                // The renderer writes into the reusable output buffer.
-                // No new String is created for this frame.
-                self.renderer.render(&frame, &mut self.output);
-
-                self.terminal
-                    .draw(&self.output)
-                    .map_err(|error| format!("Failed to draw frame: {error}"))?;
-
-                // Rendering and terminal output are included in the frame budget.
-                // If they finish early, sleep for the remaining frame duration.
-                let elapsed = frame_start.elapsed();
-
-                if elapsed < frame_duration {
-                    thread::sleep(frame_duration - elapsed);
-                }
+        let raw_mode = match RawMode::enter() {
+            Ok(mode) => mode,
+            Err(error) => {
+                let _ = self.terminal.leave();
+                return Err(error);
             }
+        };
 
-            Ok(())
-        })();
+        let mut keyboard = match Keyboard::new() {
+            Ok(keyboard) => keyboard,
+            Err(error) => {
+                drop(raw_mode);
+                let _ = self.terminal.leave();
+                return Err(error);
+            }
+        };
 
-        // The terminal must always be restored after playback, including
-        // decoder and rendering failures.
+        let playback_result = self.play_loop(&mut keyboard);
+
+        drop(raw_mode);
+
         let leave_result = self
             .terminal
             .leave()
@@ -77,5 +190,82 @@ impl Player {
             (Ok(()), Err(error)) => Err(error),
             (Ok(()), Ok(())) => Ok(()),
         }
+    }
+
+    fn play_loop(&mut self, keyboard: &mut Keyboard) -> Result<(), String> {
+        let frame_duration = Duration::from_secs_f64(1.0 / self.decoder.fps() as f64);
+
+        loop {
+            if let Some(input) = keyboard.read_input() {
+                match input {
+                    Input::Quit => break,
+
+                    Input::Pause => {
+                        self.paused = !self.paused;
+                    }
+
+                    Input::SeekBackward => {
+                        self.seek(-15.0)?;
+                    }
+
+                    Input::SeekForward => {
+                        self.seek(15.0)?;
+                    }
+                }
+            }
+
+            if self.paused {
+                thread::sleep(Duration::from_millis(30));
+                continue;
+            }
+
+            let frame_start = Instant::now();
+
+            let frame = match self.decoder.next_frame()? {
+                Some(frame) => frame,
+                None => break,
+            };
+
+            self.renderer.render(&frame, &mut self.output);
+
+            self.terminal
+                .draw(&self.output)
+                .map_err(|error| format!("Failed to draw frame: {error}"))?;
+
+            self.position += frame_duration.as_secs_f64();
+
+            if let Some(duration) = self.duration {
+                if self.position > duration {
+                    self.position = duration;
+                }
+            }
+
+            let elapsed = frame_start.elapsed();
+
+            if elapsed < frame_duration {
+                thread::sleep(frame_duration - elapsed);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn seek(&mut self, offset: f64) -> Result<(), String> {
+        let mut target = self.position + offset;
+
+        if target < 0.0 {
+            target = 0.0;
+        }
+
+        if let Some(duration) = self.duration {
+            if target > duration {
+                target = duration;
+            }
+        }
+
+        self.decoder.seek_to(target)?;
+        self.position = target;
+
+        Ok(())
     }
 }

@@ -69,6 +69,12 @@ pub struct FfmpegDecoder {
     width: usize,
     height: usize,
     fps: u32,
+
+    // Keep the already-resolved media URL/path so seeking does not need to
+    // invoke yt-dlp again.
+    input: String,
+    profile: DecoderProfile,
+    quality: VideoQuality,
 }
 
 impl FfmpegDecoder {
@@ -78,12 +84,29 @@ impl FfmpegDecoder {
         profile: DecoderProfile,
         quality: VideoQuality,
     ) -> Result<Self, String> {
-        Self::new_at_position(source, profile, quality, 0.0)
+        let input = source.resolve_for_ffmpeg(quality)?;
+
+        Self::new_from_input(input, profile, quality, 0.0)
     }
 
     /// Creates a decoder starting at a specific playback position.
+    ///
+    /// This resolves the source once. For YouTube sources, the resulting
+    /// direct media URL is reused for future seeks.
     pub fn new_at_position(
         source: VideoSource,
+        profile: DecoderProfile,
+        quality: VideoQuality,
+        position: f64,
+    ) -> Result<Self, String> {
+        let input = source.resolve_for_ffmpeg(quality)?;
+
+        Self::new_from_input(input, profile, quality, position)
+    }
+
+    /// Creates a decoder from an already-resolved media input.
+    pub fn new_from_input(
+        input: String,
         profile: DecoderProfile,
         quality: VideoQuality,
         position: f64,
@@ -100,15 +123,17 @@ impl FfmpegDecoder {
             return Err("Decoder position must be a finite non-negative value.".to_string());
         }
 
-        let input = source.resolve_for_ffmpeg(quality)?;
-
         let filter = format!(
             "scale={}:{}:flags=lanczos:force_original_aspect_ratio=decrease,\
-     pad={}:{}:(ow-iw)/2:(oh-ih)/2,\
-     eq=contrast=1.08:brightness=0.02:saturation=1.08,\
-     unsharp=5:5:0.45:5:5:0,\
-     fps={}",
-            profile.width, profile.height, profile.width, profile.height, profile.fps
+             pad={}:{}:(ow-iw)/2:(oh-ih)/2,\
+             eq=contrast=1.08:brightness=0.02:saturation=1.08,\
+             unsharp=5:5:0.45:5:5:0,\
+             fps={}",
+            profile.width,
+            profile.height,
+            profile.width,
+            profile.height,
+            profile.fps
         );
 
         let position = position.to_string();
@@ -155,11 +180,31 @@ impl FfmpegDecoder {
             width: profile.width,
             height: profile.height,
             fps: profile.fps,
+            input,
+            profile,
+            quality,
         })
     }
 
     pub fn fps(&self) -> u32 {
         self.fps
+    }
+
+    /// Restarts FFmpeg at a new playback position using the same resolved
+    /// media input.
+    pub fn seek_to(&mut self, position: f64) -> Result<(), String> {
+        let decoder = Self::new_from_input(
+            self.input.clone(),
+            self.profile,
+            self.quality,
+            position,
+        )?;
+
+        let old_decoder = std::mem::replace(self, decoder);
+
+        drop(old_decoder);
+
+        Ok(())
     }
 
     /// Reads exactly one RGB frame from FFmpeg.
@@ -203,6 +248,45 @@ impl FfmpegDecoder {
             pixels,
         }))
     }
+}
+
+/// Returns the media duration in seconds when FFprobe can determine it.
+///
+/// Duration probing is intentionally separate from decoding so the player can
+/// keep its playback clock independent from FFmpeg's raw-frame stream.
+pub fn probe_duration(input: &str) -> Result<Option<f64>, String> {
+    let output = Command::new("ffprobe")
+        .args([
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            input,
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| {
+            format!(
+                "Could not start FFprobe.\n\
+                 Make sure FFmpeg/FFprobe is installed.\n\n\
+                 System error: {error}"
+            )
+        })?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let value = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse::<f64>()
+        .ok();
+
+    Ok(value.filter(|duration| duration.is_finite() && *duration >= 0.0))
 }
 
 impl Drop for FfmpegDecoder {

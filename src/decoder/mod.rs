@@ -1,3 +1,3 @@
 mod ffmpeg;
 
-pub use ffmpeg::{DecoderProfile, FfmpegDecoder, VideoFrame};
+pub use ffmpeg::{probe_duration, DecoderProfile, FfmpegDecoder, VideoFrame};
