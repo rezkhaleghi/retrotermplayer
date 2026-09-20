@@ -228,10 +228,6 @@ impl Player {
 
             self.renderer.render(&frame, &mut self.output);
 
-            self.terminal
-                .draw(&self.output)
-                .map_err(|error| format!("Failed to draw frame: {error}"))?;
-
             self.position += frame_duration.as_secs_f64();
 
             if let Some(duration) = self.duration {
@@ -239,6 +235,12 @@ impl Player {
                     self.position = duration;
                 }
             }
+
+            self.append_status_line();
+
+            self.terminal
+                .draw(&self.output)
+                .map_err(|error| format!("Failed to draw frame: {error}"))?;
 
             let elapsed = frame_start.elapsed();
 
@@ -248,6 +250,33 @@ impl Player {
         }
 
         Ok(())
+    }
+
+    fn append_status_line(&mut self) {
+        self.output.push_str("\x1b[90m");
+
+        self.output.push_str(&format!(
+            "  {} / {}",
+            format_time(self.position),
+            format_time(self.duration.unwrap_or(0.0))
+        ));
+
+        if self.paused {
+            self.output.push_str("    [ PAUSED ]");
+        }
+
+        self.output
+            .push_str("    ← →  SEEK 15s    SPACE  ");
+
+        if self.paused {
+            self.output.push_str("RESUME");
+        } else {
+            self.output.push_str("PAUSE");
+        }
+
+        self.output.push_str("    Q  QUIT");
+
+        self.output.push_str("\x1b[0m\n");
     }
 
     fn seek(&mut self, offset: f64) -> Result<(), String> {
@@ -268,4 +297,13 @@ impl Player {
 
         Ok(())
     }
+}
+
+fn format_time(seconds: f64) -> String {
+    let seconds = seconds.max(0.0).round() as u64;
+
+    let minutes = seconds / 60;
+    let seconds = seconds % 60;
+
+    format!("{minutes:02}:{seconds:02}")
 }

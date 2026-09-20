@@ -29,8 +29,11 @@ impl DecoderProfile {
     };
 
     pub const MONO_VIDEO: Self = Self {
-        width: 200,
-        height: 120,
+        // width: 200,
+        // height: 120,
+        // fps: 15,
+        width: 100,
+        height: 60,
         fps: 15,
     };
 }
