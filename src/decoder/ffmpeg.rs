@@ -16,26 +16,23 @@ pub struct DecoderProfile {
 }
 
 impl DecoderProfile {
-    pub const RETRO: Self = Self {
-        width: 100,
-        height: 60,
-        fps: 15,
-    };
+pub const RETRO: Self = Self {
+    width: 128,
+    height: 72,
+    fps: 15,
+};
 
-    pub const VIDEO: Self = Self {
-        width: 100,
-        height: 60,
-        fps: 15,
-    };
+pub const MONO_VIDEO: Self = Self {
+    width: 128,
+    height: 72,
+    fps: 15,
+};
 
-    pub const MONO_VIDEO: Self = Self {
-        // width: 200,
-        // height: 120,
-        // fps: 15,
-        width: 100,
-        height: 60,
-        fps: 15,
-    };
+pub const VIDEO: Self = Self {
+    width: 128,
+    height: 72,
+    fps: 15,
+};
 }
 
 /// A decoded RGB video frame.
