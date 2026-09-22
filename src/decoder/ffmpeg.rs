@@ -16,23 +16,23 @@ pub struct DecoderProfile {
 }
 
 impl DecoderProfile {
-pub const RETRO: Self = Self {
-    width: 128,
-    height: 72,
-    fps: 15,
-};
+    pub const RETRO: Self = Self {
+        width: 128,
+        height: 72,
+        fps: 15,
+    };
 
-pub const MONO_VIDEO: Self = Self {
-    width: 128,
-    height: 72,
-    fps: 15,
-};
+    pub const MONO_VIDEO: Self = Self {
+        width: 128,
+        height: 72,
+        fps: 15,
+    };
 
-pub const VIDEO: Self = Self {
-    width: 128,
-    height: 72,
-    fps: 15,
-};
+    pub const VIDEO: Self = Self {
+        width: 128,
+        height: 72,
+        fps: 15,
+    };
 }
 
 /// A decoded RGB video frame.
@@ -129,11 +129,7 @@ impl FfmpegDecoder {
              eq=contrast=1.08:brightness=0.02:saturation=1.08,\
              unsharp=5:5:0.45:5:5:0,\
              fps={}",
-            profile.width,
-            profile.height,
-            profile.width,
-            profile.height,
-            profile.fps
+            profile.width, profile.height, profile.width, profile.height, profile.fps
         );
 
         let position = position.to_string();
@@ -193,12 +189,8 @@ impl FfmpegDecoder {
     /// Restarts FFmpeg at a new playback position using the same resolved
     /// media input.
     pub fn seek_to(&mut self, position: f64) -> Result<(), String> {
-        let decoder = Self::new_from_input(
-            self.input.clone(),
-            self.profile,
-            self.quality,
-            position,
-        )?;
+        let decoder =
+            Self::new_from_input(self.input.clone(), self.profile, self.quality, position)?;
 
         let old_decoder = std::mem::replace(self, decoder);
 
@@ -208,57 +200,50 @@ impl FfmpegDecoder {
     }
 
     /// Reads exactly one RGB frame from FFmpeg.
-pub fn next_frame(
-    &mut self,
-    pixels: &mut Vec<u8>,
-) -> Result<Option<VideoFrame>, String> {
-    let frame_size = self.width * self.height * 3;
+    pub fn next_frame(&mut self, pixels: &mut Vec<u8>) -> Result<Option<VideoFrame>, String> {
+        let frame_size = self.width * self.height * 3;
 
-    if pixels.len() != frame_size {
-        pixels.resize(frame_size, 0);
-    }
-
-    let mut offset = 0;
-
-    while offset < frame_size {
-        let bytes_read = self
-            .stdout
-            .read(&mut pixels[offset..])
-            .map_err(|error| format!("Failed to read FFmpeg frame: {error}"))?;
-
-        if bytes_read == 0 {
-            let status = self
-                .process
-                .wait()
-                .map_err(|error| format!("Failed to wait for FFmpeg: {error}"))?;
-
-            if offset == 0 && status.success() {
-                return Ok(None);
-            }
-
-            if offset > 0 {
-                return Err(format!(
-                    "FFmpeg ended before a complete frame was received \
-                     ({offset}/{frame_size} bytes). Exit status: {status}"
-                ));
-            }
-
-            return Err(format!("FFmpeg exited with status: {status}"));
+        if pixels.len() != frame_size {
+            pixels.resize(frame_size, 0);
         }
 
-        offset += bytes_read;
+        let mut offset = 0;
+
+        while offset < frame_size {
+            let bytes_read = self
+                .stdout
+                .read(&mut pixels[offset..])
+                .map_err(|error| format!("Failed to read FFmpeg frame: {error}"))?;
+
+            if bytes_read == 0 {
+                let status = self
+                    .process
+                    .wait()
+                    .map_err(|error| format!("Failed to wait for FFmpeg: {error}"))?;
+
+                if offset == 0 && status.success() {
+                    return Ok(None);
+                }
+
+                if offset > 0 {
+                    return Err(format!(
+                        "FFmpeg ended before a complete frame was received \
+                     ({offset}/{frame_size} bytes). Exit status: {status}"
+                    ));
+                }
+
+                return Err(format!("FFmpeg exited with status: {status}"));
+            }
+
+            offset += bytes_read;
+        }
+
+        Ok(Some(VideoFrame {
+            width: self.width,
+            height: self.height,
+            pixels: std::mem::take(pixels),
+        }))
     }
-
-    Ok(Some(VideoFrame {
-        width: self.width,
-        height: self.height,
-        pixels: std::mem::take(pixels),
-    }))
-}
-
-
-
-
 }
 
 /// Returns the media duration in seconds when FFprobe can determine it.

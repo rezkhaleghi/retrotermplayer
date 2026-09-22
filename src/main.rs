@@ -81,18 +81,14 @@ fn main() {
     // Every visual mode is displayed inside the same CRT television.
     let renderer: Box<dyn Renderer> = Box::new(TvRenderer::new(renderer));
 
-    let decoder = match FfmpegDecoder::new_from_input(
-        resolved_input,
-        decoder_profile,
-        video_quality,
-        0.0,
-    ) {
-        Ok(decoder) => decoder,
-        Err(error) => {
-            eprintln!("Failed to start FFmpeg:\n{error}");
-            return;
-        }
-    };
+    let decoder =
+        match FfmpegDecoder::new_from_input(resolved_input, decoder_profile, video_quality, 0.0) {
+            Ok(decoder) => decoder,
+            Err(error) => {
+                eprintln!("Failed to start FFmpeg:\n{error}");
+                return;
+            }
+        };
 
     let terminal = Terminal::new();
 

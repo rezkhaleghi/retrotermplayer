@@ -58,11 +58,7 @@ impl RawMode {
 
 impl Drop for RawMode {
     fn drop(&mut self) {
-        if let Ok(tty) = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open("/dev/tty")
-        {
+        if let Ok(tty) = OpenOptions::new().read(true).write(true).open("/dev/tty") {
             let _ = Command::new("stty")
                 .arg(&self.original_settings)
                 .stdin(tty)
@@ -153,7 +149,6 @@ impl Player {
             duration,
             paused: false,
             frame_buffer: Vec::new(),
-
         }
     }
 
@@ -224,14 +219,14 @@ impl Player {
 
             let frame_start = Instant::now();
 
-let mut frame = match self.decoder.next_frame(&mut self.frame_buffer)? {
-    Some(frame) => frame,
-    None => break,
-};
+            let mut frame = match self.decoder.next_frame(&mut self.frame_buffer)? {
+                Some(frame) => frame,
+                None => break,
+            };
 
-self.renderer.render(&frame, &mut self.output);
+            self.renderer.render(&frame, &mut self.output);
 
-self.frame_buffer = std::mem::take(&mut frame.pixels);
+            self.frame_buffer = std::mem::take(&mut frame.pixels);
 
             self.position += frame_duration.as_secs_f64();
 
@@ -257,22 +252,20 @@ self.frame_buffer = std::mem::take(&mut frame.pixels);
         Ok(())
     }
 
-fn append_status_line(&mut self) {
-    self.output.push_str("\x1b[90m");
-    self.output.push_str("  ");
+    fn append_status_line(&mut self) {
+        self.output.push_str("\x1b[90m");
+        self.output.push_str("  ");
 
-    append_time(&mut self.output, self.position);
+        append_time(&mut self.output, self.position);
 
-    self.output.push_str(" / ");
+        self.output.push_str(" / ");
 
-    append_time(&mut self.output, self.duration.unwrap_or(0.0));
+        append_time(&mut self.output, self.duration.unwrap_or(0.0));
 
-    if self.paused {
-        self.output.push_str("    [ PAUSED ]");
-   
-    }
-        self.output
-            .push_str("    ← →  SEEK 15s    SPACE  ");
+        if self.paused {
+            self.output.push_str("    [ PAUSED ]");
+        }
+        self.output.push_str("    ← →  SEEK 15s    SPACE  ");
 
         if self.paused {
             self.output.push_str("RESUME");
