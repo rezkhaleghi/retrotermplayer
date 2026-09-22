@@ -1,5 +1,5 @@
 use std::fs::OpenOptions;
-use std::io::{self, Read};
+use std::io::Read;
 use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -134,6 +134,7 @@ pub struct Player {
     position: f64,
     duration: Option<f64>,
     paused: bool,
+    frame_buffer: Vec<u8>,
 }
 
 impl Player {
@@ -151,6 +152,8 @@ impl Player {
             position: 0.0,
             duration,
             paused: false,
+            frame_buffer: Vec::new(),
+
         }
     }
 
@@ -221,12 +224,14 @@ impl Player {
 
             let frame_start = Instant::now();
 
-            let frame = match self.decoder.next_frame()? {
-                Some(frame) => frame,
-                None => break,
-            };
+let mut frame = match self.decoder.next_frame(&mut self.frame_buffer)? {
+    Some(frame) => frame,
+    None => break,
+};
 
-            self.renderer.render(&frame, &mut self.output);
+self.renderer.render(&frame, &mut self.output);
+
+self.frame_buffer = std::mem::take(&mut frame.pixels);
 
             self.position += frame_duration.as_secs_f64();
 
@@ -252,19 +257,20 @@ impl Player {
         Ok(())
     }
 
-    fn append_status_line(&mut self) {
-        self.output.push_str("\x1b[90m");
+fn append_status_line(&mut self) {
+    self.output.push_str("\x1b[90m");
+    self.output.push_str("  ");
 
-        self.output.push_str(&format!(
-            "  {} / {}",
-            format_time(self.position),
-            format_time(self.duration.unwrap_or(0.0))
-        ));
+    append_time(&mut self.output, self.position);
 
-        if self.paused {
-            self.output.push_str("    [ PAUSED ]");
-        }
+    self.output.push_str(" / ");
 
+    append_time(&mut self.output, self.duration.unwrap_or(0.0));
+
+    if self.paused {
+        self.output.push_str("    [ PAUSED ]");
+   
+    }
         self.output
             .push_str("    ← →  SEEK 15s    SPACE  ");
 
@@ -299,11 +305,15 @@ impl Player {
     }
 }
 
-fn format_time(seconds: f64) -> String {
+fn append_time(output: &mut String, seconds: f64) {
     let seconds = seconds.max(0.0).round() as u64;
 
     let minutes = seconds / 60;
     let seconds = seconds % 60;
 
-    format!("{minutes:02}:{seconds:02}")
+    output.push((b'0' + (minutes / 10 % 10) as u8) as char);
+    output.push((b'0' + (minutes % 10) as u8) as char);
+    output.push(':');
+    output.push((b'0' + (seconds / 10) as u8) as char);
+    output.push((b'0' + (seconds % 10) as u8) as char);
 }

@@ -12,14 +12,15 @@ const TEMPORAL_STABILITY: f32 = 0.14;
 
 /// High-resolution monochrome video renderer.
 ///
-/// The decoder provides a 200x120 frame and the renderer preserves
-/// the full horizontal resolution while using half-block characters.
+/// The renderer preserves the full horizontal resolution while using
+/// half-block characters.
 ///
 /// Each `▀` represents two independent luminance pixels:
 ///
 /// foreground = top pixel
 /// background = bottom pixel
 pub struct MonoVideoRenderer {
+    luminance: Vec<f32>,
     previous: Vec<f32>,
     enhanced: Vec<f32>,
 }
@@ -27,8 +28,23 @@ pub struct MonoVideoRenderer {
 impl MonoVideoRenderer {
     pub fn new() -> Self {
         Self {
-            previous: vec![0.0; 200 * 120],
-            enhanced: vec![0.0; 200 * 120],
+            luminance: Vec::new(),
+            previous: Vec::new(),
+            enhanced: Vec::new(),
+        }
+    }
+
+    fn ensure_buffers(&mut self, pixel_count: usize) {
+        if self.luminance.len() != pixel_count {
+            self.luminance.resize(pixel_count, 0.0);
+        }
+
+        if self.previous.len() != pixel_count {
+            self.previous.resize(pixel_count, 0.0);
+        }
+
+        if self.enhanced.len() != pixel_count {
+            self.enhanced.resize(pixel_count, 0.0);
         }
     }
 
@@ -48,63 +64,6 @@ impl MonoVideoRenderer {
             }
         }
     }
-
-    fn process_image(&mut self, source: &[f32], width: usize, height: usize) {
-        for y in 0..height {
-            for x in 0..width {
-                let index = y * width + x;
-
-                let center = source[index];
-
-                // 3x3 local average.
-                let mut sum = 0.0;
-
-                for dy in -1i32..=1 {
-                    for dx in -1i32..=1 {
-                        let nx = clamp_coord(x as i32 + dx, width);
-
-                        let ny = clamp_coord(y as i32 + dy, height);
-
-                        sum += source[ny * width + nx];
-                    }
-                }
-
-                let local_average = sum / 9.0;
-
-                // High-frequency detail.
-                let detail = center - local_average;
-
-                // Subtle local contrast.
-                let local = detail * LOCAL_CONTRAST;
-
-                // Edge/detail enhancement.
-                let mut value = center + detail * SHARPEN + local;
-
-                // Stabilize only extremely small changes.
-                let previous = self.previous[index];
-
-                if (value - previous).abs() < 0.018 {
-                    value = value * (1.0 - TEMPORAL_STABILITY) + previous * TEMPORAL_STABILITY;
-                }
-
-                // Global contrast.
-                value = (value - 0.5) * CONTRAST + 0.5;
-
-                // Brightness.
-                value *= BRIGHTNESS;
-
-                // Keep full dynamic range.
-                value = value.clamp(0.0, 1.0);
-
-                // Slight gamma adjustment.
-                value = value.powf(GAMMA);
-
-                self.enhanced[index] = value.clamp(0.0, 1.0);
-            }
-        }
-
-        self.previous[..width * height].copy_from_slice(&self.enhanced[..width * height]);
-    }
 }
 
 impl Default for MonoVideoRenderer {
@@ -117,17 +76,56 @@ impl Renderer for MonoVideoRenderer {
     fn render(&mut self, frame: &VideoFrame, output: &mut String) {
         let pixel_count = frame.width * frame.height;
 
-        let mut luminance = vec![0.0; pixel_count];
+        self.ensure_buffers(pixel_count);
 
-        Self::convert_to_luminance(frame, &mut luminance);
+        Self::convert_to_luminance(frame, &mut self.luminance);
 
-        self.process_image(&luminance, frame.width, frame.height);
+        let luminance = &self.luminance;
+
+        for y in 0..frame.height {
+            for x in 0..frame.width {
+                let index = y * frame.width + x;
+
+                let center = luminance[index];
+
+                let mut sum = 0.0;
+
+                for dy in -1i32..=1 {
+                    for dx in -1i32..=1 {
+                        let nx = clamp_coord(x as i32 + dx, frame.width);
+                        let ny = clamp_coord(y as i32 + dy, frame.height);
+
+                        sum += luminance[ny * frame.width + nx];
+                    }
+                }
+
+                let local_average = sum / 9.0;
+                let detail = center - local_average;
+                let local = detail * LOCAL_CONTRAST;
+
+                let mut value = center + detail * SHARPEN + local;
+
+                let previous = self.previous[index];
+
+                if (value - previous).abs() < 0.018 {
+                    value = value * (1.0 - TEMPORAL_STABILITY) + previous * TEMPORAL_STABILITY;
+                }
+
+                value = (value - 0.5) * CONTRAST + 0.5;
+                value *= BRIGHTNESS;
+                value = value.clamp(0.0, 1.0);
+                value = value.powf(GAMMA);
+
+                self.enhanced[index] = value.clamp(0.0, 1.0);
+            }
+        }
+
+        self.previous[..pixel_count].copy_from_slice(&self.enhanced[..pixel_count]);
 
         output.clear();
         output.push_str("\x1b[H");
 
         // Each half-block character represents two vertical pixels.
-        // We preserve the full horizontal resolution.
         for y in (0..frame.height).step_by(2) {
             let bottom_y = (y + 1).min(frame.height - 1);
 
@@ -136,22 +134,18 @@ impl Renderer for MonoVideoRenderer {
 
             for x in 0..frame.width {
                 let top = self.enhanced[y * frame.width + x];
-
                 let bottom = self.enhanced[bottom_y * frame.width + x];
 
                 let fg = grayscale_ansi(top);
-
                 let bg = grayscale_ansi(bottom);
 
                 if current_fg != Some(fg) {
                     push_color(output, 38, fg);
-
                     current_fg = Some(fg);
                 }
 
                 if current_bg != Some(bg) {
                     push_color(output, 48, bg);
-
                     current_bg = Some(bg);
                 }
 
@@ -186,13 +180,10 @@ fn push_color(output: &mut String, mode: u8, color: u8) {
 fn push_number(output: &mut String, value: u8) {
     if value >= 100 {
         output.push((b'0' + value / 100) as char);
-
         output.push((b'0' + (value / 10) % 10) as char);
-
         output.push((b'0' + value % 10) as char);
     } else if value >= 10 {
         output.push((b'0' + value / 10) as char);
-
         output.push((b'0' + value % 10) as char);
     } else {
         output.push((b'0' + value) as char);
